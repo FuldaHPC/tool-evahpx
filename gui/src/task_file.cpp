@@ -1,6 +1,7 @@
 #include "task_file.h"
 
 #include <QFile>
+#include <QDir>
 #include <QFileInfo>
 #include <QHash>
 #include <QSet>
@@ -68,6 +69,32 @@ bool TaskFile::isTaskFile(const QUrl &url) const
     if (!f.open(QIODevice::ReadOnly))
         return false;
     return f.readLine(64).startsWith("# eduhpx_tasks_csv");
+}
+
+QUrl TaskFile::companion(const QUrl &url) const
+{
+    if (!url.isLocalFile())
+        return QUrl();
+    const QFileInfo info(url.toLocalFile());
+    const QDir dir = info.dir();
+    const QString base = info.completeBaseName();      // "run", "foo", "foo.tasks"
+    const bool isTasks = isTaskFile(url);
+    QStringList candidates;
+    if (isTasks) {
+        if (base.endsWith(QLatin1String(".tasks")))
+            candidates << base.left(base.size() - 6) + QLatin1String(".csv");
+        candidates << QStringLiteral("run.csv");
+    } else {
+        candidates << base + QLatin1String(".tasks.csv") << QStringLiteral("tasks.csv");
+    }
+    for (const QString &name : std::as_const(candidates)) {
+        const QString path = dir.filePath(name);
+        if (path == info.absoluteFilePath() || !QFile::exists(path))
+            continue;
+        if (isTaskFile(QUrl::fromLocalFile(path)) != isTasks)
+            return QUrl::fromLocalFile(path);
+    }
+    return QUrl();
 }
 
 void TaskFile::fail(const QString &message)

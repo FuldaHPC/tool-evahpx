@@ -99,6 +99,23 @@ Item {
         selRel = file.relatives(task);
     }
 
+    // a run without task data: nothing to show here
+    Rectangle {
+        anchors.fill: parent
+        z: 10
+        visible: !root.file || !root.file.loaded
+        color: "#2b2b2b"
+        border.color: "#222222"
+        Text {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 40, 560)
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            color: "#bbbbbb"; font.pixelSize: 14; lineHeight: 1.2
+            text: "No task data for this run.\nThe threads of HPX are only recorded when the program runs with eduhpx-run --tasks (HPX built with install-hpx.sh --with-task-trace)."
+        }
+    }
+
     Canvas {
         id: canvas
         anchors.fill: parent

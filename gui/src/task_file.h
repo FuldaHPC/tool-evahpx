@@ -36,6 +36,9 @@ public:
 
     // Is this a task file (does it start with "# eduhpx_tasks_csv")?
     Q_INVOKABLE bool isTaskFile(const QUrl &file) const;
+    // The file that belongs to this one in the same folder, or an empty URL: for a run file the task file of the same run
+    // (tasks.csv, <name>.tasks.csv), for a task file the run file (run.csv, <name>.csv). eduhpx-run writes run.csv and tasks.csv.
+    Q_INVOKABLE QUrl companion(const QUrl &file) const;
     Q_INVOKABLE bool load(const QUrl &file);
     Q_INVOKABLE void unload();
 

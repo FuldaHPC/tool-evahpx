@@ -69,7 +69,8 @@ ApplicationWindow {
     property int runParcels: 0
     property int skipped: 0         // parcels without MPI data (not shown)
     property int hoverIndex: -1
-    property string viewMode: "locality"   // locality | message | tree | tree3d
+    property string viewMode: "locality"   // locality | message | tree | tree3d | threads
+    readonly property bool threads: viewMode === "threads"      // what the worker threads did (the task data of the run, if there is any)
     readonly property bool treeView: viewMode === "tree" || viewMode === "tree3d"   // the trees need no time breakdown and no colour legend of the lanes
     property var laneInfo: []
     property var laneMsgs: []
@@ -271,13 +272,21 @@ ApplicationWindow {
 
     // open a run file (a URL; also called from the command line and by drag and drop)
     function openFile(url) {
-        if (tasks.isTaskFile(url)) {            // a task file (what the worker threads did) or a run file
-            run.unload();
-            tasks.load(url);
-        } else {
-            tasks.unload();
-            run.load(url);
-        }
+        // one run: the file of the parcels and MPI (run.csv) and, if there is one in the same folder, the file of the
+        // worker threads (tasks.csv). Either of the two can be opened, the other one is found.
+        const other = tasks.companion(url);
+        const isTasks = tasks.isTaskFile(url);
+        const runUrl = isTasks ? other : url;
+        const tasksUrl = isTasks ? url : other;
+        run.unload();
+        tasks.unload();
+        viewMode = "locality";
+        if (runUrl.toString() !== "")
+            run.load(runUrl);
+        if (tasksUrl.toString() !== "")
+            tasks.load(tasksUrl);
+        if (runUrl.toString() === "")
+            viewMode = "threads";               // only task data: nothing else to show
     }
     // for the tests: the part of the task view that is shown, in milliseconds after the start of the run
     function showThreadWindow(fromMs, toMs) {
@@ -308,6 +317,7 @@ ApplicationWindow {
     }
     function showStartPage() {          // also used by the headless preview
         run.unload();
+        tasks.unload();
     }
     // for the headless preview (eduhpx --render): show a group / a view
     function showGroup(kind, k) {
@@ -1083,28 +1093,19 @@ ApplicationWindow {
                 elide: Text.ElideRight
                 text: run.error !== "" ? run.error
                     : tasks.error !== "" ? tasks.error
-                    : tasks.loaded ? "Tasks " + tasks.name + " - " + tasks.taskCount + " tasks in " + tasks.sliceCount + " slices on "
+                    : !run.loaded && tasks.loaded ? "Tasks " + tasks.name + " - " + tasks.taskCount + " tasks in " + tasks.sliceCount + " slices on "
                                      + tasks.rowLabels.length + " worker threads"
                     : run.loaded ? "Run " + run.name + " - " + hpxWindow.groups.length + " groups, " + run.messages.length + " parcels"
+                                   + (tasks.loaded ? ", " + tasks.taskCount + " tasks on " + tasks.rowLabels.length + " worker threads" : "")
                                    + (hpxWindow.skipped > 0 ? " (" + hpxWindow.skipped + " without MPI data are not shown)" : "")
                     : ""
             }
         }
 
-        // what the worker threads did (a task file)
-        ThreadView {
-            id: threadView
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            visible: tasks.loaded
-            file: tasks
-            win: hpxWindow
-        }
-
         // choose the group
         RowLayout {
             Layout.fillWidth: true
-            visible: run.loaded && hpxWindow.groups.length > 0
+            visible: run.loaded && hpxWindow.groups.length > 0 && !hpxWindow.threads
             spacing: 10
             Button { text: "<"; enabled: hpxWindow.current > 0; onClicked: hpxWindow.select(hpxWindow.current - 1) }
             Label {
@@ -1139,7 +1140,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: hpxWindow.treeView ? (hpxWindow.showPath ? 68 : 40) : (hpxWindow.showPath ? 150 : 124)
-            visible: run.loaded && hpxWindow.groups.length > 0
+            visible: run.loaded && hpxWindow.groups.length > 0 && !hpxWindow.threads
             color: "#3a3a3a"
             border.color: "#2b2b2b"
             radius: 3
@@ -1278,7 +1279,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 60
-            visible: run.loaded && hpxWindow.groups.length > 0
+            visible: run.loaded && hpxWindow.groups.length > 0 && !hpxWindow.threads
             color: "#2b2b2b"
             border.color: "#222222"
 
@@ -1330,16 +1331,17 @@ ApplicationWindow {
         // choose the view
         RowLayout {
             Layout.fillWidth: true
-            visible: run.loaded && hpxWindow.groups.length > 0
+            visible: run.loaded && (hpxWindow.groups.length > 0 || tasks.loaded)
             spacing: 4
-            Button { text: "By locality"; checkable: true; checked: hpxWindow.viewMode === "locality"; onClicked: { hpxWindow.viewMode = "locality"; lanes.requestPaint(); } }
-            Button { text: "By message"; checkable: true; checked: hpxWindow.viewMode === "message"; onClicked: { hpxWindow.viewMode = "message"; waterfall.requestPaint(); } }
+            Button { text: "By locality"; visible: hpxWindow.groups.length > 0; checkable: true; checked: hpxWindow.viewMode === "locality"; onClicked: { hpxWindow.viewMode = "locality"; lanes.requestPaint(); } }
+            Button { text: "By message"; visible: hpxWindow.groups.length > 0; checkable: true; checked: hpxWindow.viewMode === "message"; onClicked: { hpxWindow.viewMode = "message"; waterfall.requestPaint(); } }
             Button { text: "Tree"; visible: hpxWindow.hasTree; checkable: true; checked: hpxWindow.viewMode === "tree"; onClicked: { hpxWindow.viewMode = "tree"; tree.requestPaint(); } }
             Button { text: "3D tree"; visible: hpxWindow.hasTree; checkable: true; checked: hpxWindow.viewMode === "tree3d"; onClicked: hpxWindow.viewMode = "tree3d" }
-            Button { text: "Reset zoom"; onClicked: hpxWindow.select(hpxWindow.current) }
+            Button { text: "Threads"; checkable: true; checked: hpxWindow.threads; onClicked: hpxWindow.viewMode = "threads" }
+            Button { text: "Reset zoom"; visible: !hpxWindow.threads && hpxWindow.groups.length > 0; onClicked: hpxWindow.select(hpxWindow.current) }
             Button {
                 text: "Critical path"
-                visible: hpxWindow.hasTree
+                visible: hpxWindow.hasTree && !hpxWindow.threads
                 checkable: true
                 checked: hpxWindow.criticalOn
                 onToggled: { hpxWindow.criticalOn = checked; lanes.requestPaint(); waterfall.requestPaint(); tree.requestPaint(); }
@@ -1359,10 +1361,20 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
         }
 
+        // what the worker threads did (the task data of the run)
+        ThreadView {
+            id: threadView
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: hpxWindow.threads && (run.loaded || tasks.loaded)
+            file: tasks
+            win: hpxWindow
+        }
+
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: run.loaded || !tasks.loaded     // also the dark panel of the start page; hidden only in the thread view
+            visible: !hpxWindow.threads && (run.loaded || !tasks.loaded)     // also the dark panel of the start page; hidden in the thread view
             color: "#2b2b2b"
             border.color: "#222222"
             clip: true
@@ -2012,7 +2024,7 @@ ApplicationWindow {
         // legend (wraps in a narrow window) and the details of what is under the mouse
         Flow {
             Layout.fillWidth: true
-            visible: run.loaded && !hpxWindow.treeView
+            visible: run.loaded && !hpxWindow.treeView && !hpxWindow.threads
             spacing: 12
             Row { spacing: 5; Rectangle { width: 20; height: 10; color: hpxWindow.waitColor; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "waits for data" } }
             Row { spacing: 5; Rectangle { width: 20; height: 10; color: hpxWindow.preColor; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "HPX prepares" } }
@@ -2041,7 +2053,7 @@ ApplicationWindow {
         }
         Label {
             Layout.fillWidth: true
-            visible: run.loaded && hpxWindow.viewMode !== "tree3d"
+            visible: run.loaded && hpxWindow.viewMode !== "tree3d" && !hpxWindow.threads
             color: "#dddddd"
             elide: Text.ElideRight
             text: {
@@ -2077,7 +2089,7 @@ ApplicationWindow {
         RowLayout {
             Layout.alignment: Qt.AlignHCenter
             spacing: 14
-            Label { color: "#cccccc"; text: "Open a run file or a task file (.csv) or drop it here" }
+            Label { color: "#cccccc"; text: "Open a run file (.csv) or drop it here" }
             Button { text: "Open file..."; onClicked: fileDialog.open() }
         }
         Rectangle {
