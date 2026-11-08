@@ -196,6 +196,8 @@ cmake_args=(
     # task hooks (lifecycle, work stealing, causal events): only with --with-task-trace
     -DHPX_WITH_TRACING_LIFECYCLE_EVENTS=$trace_hooks -DHPX_WITH_TRACING_WORK_STEALING_EVENTS=$trace_hooks -DHPX_WITH_TRACING_CAUSAL_EVENTS=$trace_hooks
     -DHPX_WITH_TRACING_SAMPLE_RATE=1
+    # keep the description (or the function address) of every task, so that the task log can name the tasks
+    -DHPX_WITH_TASK_TRACE_NAMES=$trace_hooks
     # lock events (HPX PR 8001, off by default since ec3b59b) cost about 10 % with Tracy compiled in, even without a profiler
     -DHPX_WITH_TRACING_LOCK_EVENTS=OFF
     -DHPX_WITH_EXAMPLES=OFF -DHPX_WITH_TESTS=OFF -DHPX_WITH_DOCUMENTATION=OFF

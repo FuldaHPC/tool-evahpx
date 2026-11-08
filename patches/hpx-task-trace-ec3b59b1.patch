@@ -1,3 +1,56 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d40c03d..b94067f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1821,6 +1821,19 @@ hpx_option(
+   ADVANCED
+ )
+ 
++# EduHPX: the task log (HPX_TASK_LOG) names the tasks. HPX keeps the description of a task only if asked: the name of an
++# action or of an annotated function, else the address of its function. Much cheaper than HPX_WITH_THREAD_DEBUG_INFO.
++hpx_option(
++  HPX_WITH_TASK_TRACE_NAMES BOOL
++  "Keep the description (or the function address) of every task for the EduHPX task log (default: OFF)" OFF
++  CATEGORY "Profiling"
++  ADVANCED
++)
++if(HPX_WITH_TASK_TRACE_NAMES)
++  hpx_add_config_define(HPX_HAVE_THREAD_DESCRIPTION)
++  hpx_add_config_define(HPX_HAVE_THREAD_DESCRIPTION_FULL)
++endif()
++
+ # If APEX is defined, the action timers need thread debug info.
+ if(HPX_WITH_APEX)
+   hpx_add_config_define(HPX_HAVE_THREAD_DESCRIPTION)
+diff --git a/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp b/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp
+index f1c0c01..55df53c 100644
+--- a/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp
++++ b/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp
+@@ -344,6 +344,8 @@ namespace hpx::threads {
+         mutable char fiber_name_[64];
+         // 1-in-N tracing sample decision, set at ctor/rebind_base only.
+         bool emit_lifecycle_ = false;
++        // EduHPX task log: the number of this task, unique for the whole run (0: not numbered)
++        std::uint64_t trace_serial_ = 0;
+ #endif
+ 
+     public:
+@@ -513,6 +515,15 @@ namespace hpx::threads {
+ #endif
+         }
+ 
++#if defined(HPX_HAVE_TRACY)
++        /// EduHPX task log: the number of this task, unique for the whole run
++        /// (the address of a thread_data is not: the objects are reused).
++        constexpr std::uint64_t trace_serial() const noexcept
++        {
++            return trace_serial_;
++        }
++#endif
++
+         // handle thread interruption
+         bool interruption_requested() const noexcept
+         {
 diff --git a/libs/core/threading_base/src/detail/task_sampling.cpp b/libs/core/threading_base/src/detail/task_sampling.cpp
 index 7f7e6c0..ab5aa58 100644
 --- a/libs/core/threading_base/src/detail/task_sampling.cpp
@@ -27,11 +80,35 @@ index 7f7e6c0..ab5aa58 100644
  
          // Per-worker sampling state. last_rate is the rate value that seeded
          // the current countdown; when it disagrees with the runtime rate, the
+diff --git a/libs/core/threading_base/src/thread_data.cpp b/libs/core/threading_base/src/thread_data.cpp
+index 6bae9a9..3a16785 100644
+--- a/libs/core/threading_base/src/thread_data.cpp
++++ b/libs/core/threading_base/src/thread_data.cpp
+@@ -119,6 +119,9 @@ namespace hpx::threads {
+         // Decide once per task creation whether this task's lifecycle is
+         // sampled. Safe unlocked: the object is not yet observable.
+         emit_lifecycle_ = hpx::threads::detail::should_sample_next();
++        trace_serial_ = hpx::tracing::detail::task_log_on() ?
++            hpx::tracing::detail::task_log_new_serial() :
++            0;
+ #endif
+         hpx::tracing::task_created(this, parent_task_id);
+     }
+@@ -259,6 +262,9 @@ namespace hpx::threads {
+         // Fresh 1/N decision for the recycled slab. Safe unlocked: no
+         // other worker can see it during rebind.
+         emit_lifecycle_ = hpx::threads::detail::should_sample_next();
++        trace_serial_ = hpx::tracing::detail::task_log_on() ?
++            hpx::tracing::detail::task_log_new_serial() :
++            0;
+ #endif
+ 
+         runs_as_child_.store(init_data.schedulehint.runs_as_child_mode() ==
 diff --git a/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp b/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp
-index 7302f25..1e5df2f 100644
+index 7302f25..1e3754e 100644
 --- a/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp
 +++ b/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp
-@@ -44,6 +44,28 @@ namespace hpx::tracing {
+@@ -44,6 +44,34 @@ namespace hpx::tracing {
          {
              return hpx::tracy::is_profiler_connected();
          }
@@ -45,76 +122,28 @@ index 7302f25..1e5df2f 100644
 +            return g_task_log_enabled.load(std::memory_order_relaxed);
 +        }
 +
++        // a number for a new task, unique for the whole run (the address of a task object is reused)
++        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT std::uint64_t task_log_new_serial() noexcept;
++
++        // the facade functions of tracing.hpp call these (they know the type of the task); name is the
++        // description of the task, or nullptr and addr = the address of its function
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_created(
-+            char const* description, void const* task_id, void const* parent) noexcept;
++            std::uint64_t serial, std::uint64_t parent, char const* name, std::size_t addr) noexcept;
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_executing(
-+            void const* task_id, char const* description, std::size_t worker) noexcept;
++            std::uint64_t serial, char const* name, std::size_t addr, std::size_t worker) noexcept;
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_ended(
-+            void const* task_id, std::uint8_t how, char const* reason) noexcept;
++            std::uint64_t serial, std::uint8_t how, char const* reason) noexcept;
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_resumed(
-+            void const* task_id, char const* wake_reason) noexcept;
++            std::uint64_t serial, char const* wake_reason) noexcept;
++        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_work_stolen(
++            std::size_t thief, std::size_t victim, std::uint64_t serial) noexcept;
++        // these two are called by the wrappers below: the id is the address of the shared state of a future
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_future_fulfilled(void const* future_id) noexcept;
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_continuation_run(void const* future_id) noexcept;
-+        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void task_log_work_stolen(
-+            std::size_t thief, std::size_t victim, void const* task_id) noexcept;
      }    // namespace detail
  
      ////////////////////////////////////////////////////////////////////////////
-@@ -322,6 +344,8 @@ namespace hpx::tracing {
-     HPX_CXX_CORE_EXPORT inline void task_created(char const* description,
-         void const* task_id, void const* parent_task_id = nullptr) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_created(description, task_id, parent_task_id);
-         if (!detail::is_profiler_connected())
-             return;
-         detail::task_created_impl(description, task_id, parent_task_id);
-@@ -333,6 +357,8 @@ namespace hpx::tracing {
-     HPX_CXX_CORE_EXPORT inline void task_executing(void const* task_id,
-         char const* description, std::size_t worker_thread) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_executing(task_id, description, worker_thread);
-         if (!detail::is_profiler_connected())
-             return;
-         detail::task_executing_impl(task_id, description, worker_thread);
-@@ -342,6 +368,8 @@ namespace hpx::tracing {
-     HPX_CXX_CORE_EXPORT inline void task_yielded(
-         void const* task_id, char const* description) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_ended(task_id, 1, nullptr);
-         if (!detail::is_profiler_connected())
-             return;
-         detail::task_yielded_impl(task_id, description);
-@@ -353,6 +381,8 @@ namespace hpx::tracing {
-     HPX_CXX_CORE_EXPORT inline void task_suspended(void const* task_id,
-         char const* description, char const* reason = nullptr) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_ended(task_id, 2, reason);
-         if (!detail::is_profiler_connected())
-             return;
-         detail::task_suspended_impl(task_id, description, reason);
-@@ -365,6 +395,8 @@ namespace hpx::tracing {
-     HPX_CXX_CORE_EXPORT inline void task_resumed(void const* task_id,
-         char const* description, char const* wake_reason = nullptr) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_resumed(task_id, wake_reason);
-         if (!detail::is_profiler_connected())
-             return;
-         detail::task_resumed_impl(task_id, description, wake_reason);
-@@ -374,6 +406,8 @@ namespace hpx::tracing {
-     HPX_CXX_CORE_EXPORT inline void task_completed(
-         void const* task_id, char const* description) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_ended(task_id, 0, nullptr);
-         if (!detail::is_profiler_connected())
-             return;
-         detail::task_completed_impl(task_id, description);
-@@ -525,6 +559,8 @@ namespace hpx::tracing {
+@@ -525,6 +553,8 @@ namespace hpx::tracing {
      HPX_CXX_CORE_EXPORT inline void future_fulfilled(
          void const* future_id, char const* desc = nullptr) noexcept
      {
@@ -123,7 +152,7 @@ index 7302f25..1e5df2f 100644
          if (!detail::is_profiler_connected())
              return;
          detail::future_fulfilled_impl(future_id, desc);
-@@ -551,6 +587,8 @@ namespace hpx::tracing {
+@@ -551,6 +581,8 @@ namespace hpx::tracing {
          // Counter update runs unconditionally so the tally stays consistent
          // across connect/disconnect transitions -- see g_active_continuations.
          detail::g_active_continuations.fetch_add(1, std::memory_order_relaxed);
@@ -132,20 +161,169 @@ index 7302f25..1e5df2f 100644
          if (!detail::is_profiler_connected())
              return;
          detail::continuation_run_emit(task_id);
-@@ -613,6 +651,8 @@ namespace hpx::tracing {
-         std::size_t victim_id, void const* task_id,
-         char const* desc = nullptr) noexcept
-     {
-+        if (detail::task_log_on())
-+            detail::task_log_work_stolen(thief_id, victim_id, task_id);
-         if (!detail::is_profiler_connected())
+diff --git a/libs/core/tracing/include/hpx/tracing/tracing.hpp b/libs/core/tracing/include/hpx/tracing/tracing.hpp
+index db64806..e01e7e7 100644
+--- a/libs/core/tracing/include/hpx/tracing/tracing.hpp
++++ b/libs/core/tracing/include/hpx/tracing/tracing.hpp
+@@ -144,6 +144,30 @@ namespace hpx::tracing {
+ }    // namespace hpx::tracing
+ #endif
+ 
++#if defined(HPX_HAVE_TRACY)
++namespace hpx::tracing::detail {
++
++    // EduHPX task log: what a task is called. A name if it has one (an action, an annotated function),
++    // else the address of its function (HPX_WITH_TASK_TRACE_NAMES keeps it)
++    template <typename ThreadData>
++    void task_log_name(ThreadData* thrdptr, char const*& name, std::size_t& addr) noexcept
++    {
++        auto const description = thrdptr->get_description();
++#if defined(HPX_HAVE_THREAD_DESCRIPTION)
++        using description_type = std::remove_cv_t<decltype(description)>;
++        if (description.kind() == description_type::data_type::address)
++        {
++            name = nullptr;
++            addr = description.get_address();
++            return;
++        }
++#endif
++        name = ThreadData::get_safe_description(description, "thread");
++        addr = 0;
++    }
++}    // namespace hpx::tracing::detail
++#endif
++
+ namespace hpx::tracing {
+ 
+     template <typename ThreadData>
+@@ -153,6 +177,19 @@ namespace hpx::tracing {
+ #if defined(HPX_HAVE_TRACING)
+         if (!thrdptr->should_emit_lifecycle())
              return;
-         detail::work_stolen_impl(thief_id, victim_id, task_id, desc);
++#if defined(HPX_HAVE_TRACY)
++        if (detail::task_log_on())
++        {
++            char const* name = nullptr;
++            std::size_t addr = 0;
++            detail::task_log_name(thrdptr, name, addr);
++            detail::task_log_created(thrdptr->trace_serial(),
++                parent_task_id != nullptr ?
++                    static_cast<ThreadData const*>(parent_task_id)->trace_serial() :
++                    0,
++                name, addr);
++        }
++#endif
+         task_created(ThreadData::get_safe_description(
+                          thrdptr->get_description(), "thread"),
+             thrdptr, parent_task_id);
+@@ -165,6 +202,16 @@ namespace hpx::tracing {
+ #if defined(HPX_HAVE_TRACING)
+         if (!thrdptr->should_emit_lifecycle())
+             return;
++#if defined(HPX_HAVE_TRACY)
++        if (detail::task_log_on())
++        {
++            char const* name = nullptr;
++            std::size_t addr = 0;
++            detail::task_log_name(thrdptr, name, addr);
++            detail::task_log_executing(thrdptr->trace_serial(), name, addr,
++                thrdptr->get_last_worker_thread_num());
++        }
++#endif
+         task_executing(thrdptr,
+             ThreadData::get_safe_description(
+                 thrdptr->get_description(), "thread"),
+@@ -185,6 +232,12 @@ namespace hpx::tracing {
+         auto* thrdptr = get_thread_id_data(id);
+         if (!thrdptr->should_emit_lifecycle())
+             return;
++#if defined(HPX_HAVE_TRACY)
++        if (detail::task_log_on())
++        {
++            detail::task_log_ended(thrdptr->trace_serial(), 1, nullptr);
++        }
++#endif
+         using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
+         task_yielded(thrdptr,
+             thread_data_type::get_safe_description(
+@@ -201,6 +254,16 @@ namespace hpx::tracing {
+         if (!thrdptr->should_emit_lifecycle())
+             return;
+         using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
++#if defined(HPX_HAVE_TRACY)
++        if (detail::task_log_on())
++        {
++            if constexpr (std::is_convertible_v<String, char const*>)
++                detail::task_log_ended(thrdptr->trace_serial(), 2, reason);
++            else
++                detail::task_log_ended(thrdptr->trace_serial(), 2,
++                    thread_data_type::get_safe_description(reason, "suspend"));
++        }
++#endif
+         if constexpr (std::is_convertible_v<String, char const*>)
+         {
+             task_suspended(thrdptr,
+@@ -227,6 +290,16 @@ namespace hpx::tracing {
+         if (!thrdptr->should_emit_lifecycle())
+             return;
+         using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
++#if defined(HPX_HAVE_TRACY)
++        if (detail::task_log_on())
++        {
++            if constexpr (std::is_convertible_v<StateX, char const*>)
++                detail::task_log_resumed(thrdptr->trace_serial(), statex);
++            else
++                detail::task_log_resumed(
++                    thrdptr->trace_serial(), get_thread_state_ex_name(statex));
++        }
++#endif
+         if constexpr (std::is_convertible_v<StateX, char const*>)
+         {
+             task_resumed(thrdptr,
+@@ -250,6 +323,12 @@ namespace hpx::tracing {
+ #if defined(HPX_HAVE_TRACING)
+         if (!thrdptr->should_emit_lifecycle())
+             return;
++#if defined(HPX_HAVE_TRACY)
++        if (detail::task_log_on())
++        {
++            detail::task_log_ended(thrdptr->trace_serial(), 0, nullptr);
++        }
++#endif
+         task_completed(thrdptr,
+             ThreadData::get_safe_description(
+                 thrdptr->get_description(), "thread"));
+@@ -268,6 +347,12 @@ namespace hpx::tracing {
+         {
+             if (!thrd_data->should_emit_lifecycle())
+                 return;
++#if defined(HPX_HAVE_TRACY)
++            if (detail::task_log_on())
++            {
++                detail::task_log_work_stolen(thief_id, victim_id, thrd_data->trace_serial());
++            }
++#endif
+             using thread_data_type = std::remove_pointer_t<decltype(thrd_data)>;
+             work_stolen(thief_id, victim_id, thrd_data,
+                 thread_data_type::get_safe_description(
+@@ -290,6 +375,12 @@ namespace hpx::tracing {
+                 {
+                     if (!thrd_data->should_emit_lifecycle())
+                         continue;
++#if defined(HPX_HAVE_TRACY)
++                    if (detail::task_log_on())
++                    {
++                        detail::task_log_work_stolen(thief_id, victim_id, thrd_data->trace_serial());
++                    }
++#endif
+                     using thread_data_type =
+                         std::remove_pointer_t<decltype(thrd_data)>;
+                     work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..4b95441 100644
+index 1b39ce6..f33d334 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
-@@ -24,6 +24,16 @@
+@@ -24,6 +24,18 @@
  #include <string_view>
  #include <utility>
  #include <vector>
@@ -157,12 +335,14 @@ index 1b39ce6..4b95441 100644
 +#include <x86intrin.h>
 +#endif
 +#if !defined(_WIN32)
++#include <cxxabi.h>
++#include <dlfcn.h>
 +#include <unistd.h>
 +#endif
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +769,366 @@ namespace hpx::tracing {
+@@ -759,4 +771,424 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -182,14 +362,19 @@ index 1b39ce6..4b95441 100644
 +//   other CPUs). The two pairs (ticks, wall clock) turn them into wall clock time.
 +//   record: kind, flag, worker, name, t, a, b
 +//     1 slice      a task runs on a worker: t = start, b = end, flag = how it ended (0 finished, 1 yielded,
-+//                  2 suspended), a = task id, name = what the task is
-+//     2 created    a = task id, b = parent task id (0: none), name = what the task is
-+//     3 suspend    a = task id, name = reason
-+//     4 resumed    a = task id, name = what woke it
-+//     5 fulfilled  a = id of the future (shared state), b = task that was running (0: none)
++//                  2 suspended), a = task number, name = what the task is
++//     2 created    a = task number, b = number of the parent task (0: none), name = what the task is
++//     3 suspend    a = task number, name = reason
++//     4 resumed    a = task number, name = what woke it
++//     5 fulfilled  a = id of the future (address of its shared state), b = number of the task that was running (0: none)
 +//     6 continuation a = id of the future whose value the continuation uses, b = task that was running
-+//     7 stolen     a = task id, worker = thief, b = victim
-+//   names: "EDUHPXN1", u32 count, then per name: u32 id, u16 length, the bytes
++//     7 stolen     a = task number, worker = thief, b = victim
++//   The number of a task is unique for the whole run (the address of a task is not: HPX reuses its task objects):
++//   (index of the OS thread that created it << 40) | counter of that thread.
++//   names: the description of the task. For an action or a function with a name (hpx::annotated_function) that is
++//   the name; for any other function the address, written as <file>+0x<offset in the file>, to be looked up with
++//   addr2line or nm in that file.
++//   table of names: "EDUHPXN1", u32 count, then per name: u32 id, u16 length, the bytes
 +namespace hpx::tracing::detail {
 +
 +    std::atomic<bool> g_task_log_enabled{std::getenv("HPX_TASK_LOG") != nullptr};
@@ -388,6 +573,34 @@ index 1b39ce6..4b95441 100644
 +            return log;
 +        }
 +
++        // a function address as text: the name of the function if the file exports it, else <file>+0x<offset>
++        std::string describe_address(std::size_t addr)
++        {
++#if !defined(_WIN32)
++            Dl_info info;
++            if (dladdr(reinterpret_cast<void const*>(addr), &info) != 0)
++            {
++                if (info.dli_sname != nullptr)
++                {
++                    int status = 0;
++                    char* demangled = abi::__cxa_demangle(info.dli_sname, nullptr, nullptr, &status);
++                    std::string name = (status == 0 && demangled != nullptr) ? demangled : info.dli_sname;
++                    std::free(demangled);
++                    return name;
++                }
++                if (info.dli_fname != nullptr)
++                {
++                    char buf[32];
++                    std::snprintf(buf, sizeof(buf), "+0x%zx", addr - reinterpret_cast<std::size_t>(info.dli_fbase));
++                    return std::string(info.dli_fname) + buf;
++                }
++            }
++#endif
++            char buf[32];
++            std::snprintf(buf, sizeof(buf), "0x%zx", addr);
++            return buf;
++        }
++
 +        // what one OS thread keeps: the records not written yet, the tasks it is running (a task can run
 +        // another one inside, so a small stack), and a cache from the address of a description to its number
 +        struct task_tls
@@ -411,6 +624,7 @@ index 1b39ce6..4b95441 100644
 +            struct cache_entry
 +            {
 +                char const* key;
++                std::size_t addr;
 +                char const* stable;
 +                std::uint32_t id;
 +            };
@@ -444,12 +658,29 @@ index 1b39ce6..4b95441 100644
 +                if (s == nullptr)
 +                    s = "<none>";
 +                cache_entry& e = cache[(reinterpret_cast<std::uintptr_t>(s) >> 3) & 255];
-+                if (e.key == s && e.stable != nullptr && std::strcmp(e.stable, s) == 0)
++                if (e.key == s && e.addr == 0 && e.stable != nullptr && std::strcmp(e.stable, s) == 0)
 +                    return e.id;
 +                char const* stable = nullptr;
 +                std::uint32_t const id = task_log().intern_slow(s, stable);
-+                e = {s, stable, id};
++                e = {s, 0, stable, id};
 +                return id;
++            }
++
++            // a task without a name: the address of its function (the same address always gives the same number)
++            std::uint32_t intern_address(std::size_t addr)
++            {
++                cache_entry& e = cache[(addr >> 4) & 255];
++                if (e.key == nullptr && e.addr == addr && e.stable != nullptr)
++                    return e.id;
++                char const* stable = nullptr;
++                std::uint32_t const id = task_log().intern_slow(describe_address(addr).c_str(), stable);
++                e = {nullptr, addr, stable, id};
++                return id;
++            }
++
++            std::uint32_t name_of(char const* name, std::size_t addr)
++            {
++                return name != nullptr ? intern(name) : (addr != 0 ? intern_address(addr) : intern(nullptr));
 +            }
 +
 +            std::uint64_t running() const noexcept
@@ -467,45 +698,52 @@ index 1b39ce6..4b95441 100644
 +        }
 +    }    // namespace
 +
-+    void task_log_created(char const* description, void const* task_id, void const* parent) noexcept
++    std::uint64_t task_log_new_serial() noexcept
 +    {
-+        task_tls& s = tls();
-+        std::uint32_t const name = s.intern(description);
-+        s.push({k_created, 0, s.worker, name, task_ticks(), reinterpret_cast<std::uint64_t>(task_id),
-+            reinterpret_cast<std::uint64_t>(parent)});
++        static std::atomic<std::uint64_t> next_thread{1};
++        thread_local std::uint64_t const thread_index = next_thread.fetch_add(1, std::memory_order_relaxed);
++        thread_local std::uint64_t counter = 0;
++        return (thread_index << 40) | ++counter;
 +    }
 +
-+    void task_log_executing(void const* task_id, char const* description, std::size_t worker) noexcept
++    void task_log_created(std::uint64_t serial, std::uint64_t parent, char const* name, std::size_t addr) noexcept
++    {
++        task_tls& s = tls();
++        std::uint32_t const id = s.name_of(name, addr);
++        s.push({k_created, 0, s.worker, id, task_ticks(), serial, parent});
++    }
++
++    void task_log_executing(std::uint64_t serial, char const* name, std::size_t addr, std::size_t worker) noexcept
 +    {
 +        task_tls& s = tls();
 +        s.worker = static_cast<std::uint16_t>(worker);
-+        std::uint32_t const name = s.intern(description);
++        std::uint32_t const id = s.name_of(name, addr);
 +        if (s.depth < task_tls::max_depth)
-+            s.stack[s.depth] = {reinterpret_cast<std::uint64_t>(task_id), task_ticks(), name};
++            s.stack[s.depth] = {serial, task_ticks(), id};
 +        ++s.depth;
 +    }
 +
 +    // the slice of a task ends: it finished (0), yielded (1) or suspended (2)
-+    void task_log_ended(void const* task_id, std::uint8_t how, char const* reason) noexcept
++    void task_log_ended(std::uint64_t serial, std::uint8_t how, char const* reason) noexcept
 +    {
 +        std::uint64_t const end = task_ticks();
 +        task_tls& s = tls();
 +        if (s.depth <= 0)
 +            return;
 +        --s.depth;
-+        if (s.depth < task_tls::max_depth && s.stack[s.depth].task == reinterpret_cast<std::uint64_t>(task_id))
++        if (s.depth < task_tls::max_depth && s.stack[s.depth].task == serial)
 +        {
 +            auto const& f = s.stack[s.depth];
 +            s.push({k_slice, how, s.worker, f.name, f.start, f.task, end});
 +        }
 +        if (how == 2)
-+            s.push({k_suspend, 0, s.worker, s.intern(reason), end, reinterpret_cast<std::uint64_t>(task_id), 0});
++            s.push({k_suspend, 0, s.worker, s.intern(reason), end, serial, 0});
 +    }
 +
-+    void task_log_resumed(void const* task_id, char const* wake_reason) noexcept
++    void task_log_resumed(std::uint64_t serial, char const* wake_reason) noexcept
 +    {
 +        task_tls& s = tls();
-+        s.push({k_resumed, 0, s.worker, s.intern(wake_reason), task_ticks(), reinterpret_cast<std::uint64_t>(task_id), 0});
++        s.push({k_resumed, 0, s.worker, s.intern(wake_reason), task_ticks(), serial, 0});
 +    }
 +
 +    void task_log_future_fulfilled(void const* future_id) noexcept
@@ -520,10 +758,10 @@ index 1b39ce6..4b95441 100644
 +        s.push({k_continuation, 0, s.worker, 0, task_ticks(), reinterpret_cast<std::uint64_t>(future_id), s.running()});
 +    }
 +
-+    void task_log_work_stolen(std::size_t thief, std::size_t victim, void const* task_id) noexcept
++    void task_log_work_stolen(std::size_t thief, std::size_t victim, std::uint64_t serial) noexcept
 +    {
 +        task_tls& s = tls();
-+        s.push({k_stolen, 0, static_cast<std::uint16_t>(thief), 0, task_ticks(), reinterpret_cast<std::uint64_t>(task_id), victim});
++        s.push({k_stolen, 0, static_cast<std::uint16_t>(thief), 0, task_ticks(), serial, victim});
 +    }
 +
 +}    // namespace hpx::tracing::detail

@@ -1,6 +1,6 @@
 # The task log of HPX (prototype)
 
-The task log records what the worker threads of one locality do: which task runs on which worker, when it was created and by whom, when it suspends and resumes, and which future hands a value from one task to another. It needs no profiler. It is built in by `scripts/install-hpx.sh --with-task-trace` (the task hooks of HPX are compiled in; they cost a little even when the log is off) and switched on at run time:
+The task log records what the worker threads of one locality do: which task runs on which worker, when it was created and by whom, when it suspends and resumes, and which future hands a value from one task to another. It needs no profiler. It is built in by `scripts/install-hpx.sh --with-task-trace` (the task hooks of HPX are compiled in and HPX keeps a description of every task; this costs a little even when the log is off) and switched on at run time:
 
 | variable | meaning |
 |---|---|
@@ -33,14 +33,14 @@ Record (32 bytes): `u8 kind, u8 flag, u16 worker, u32 name, u64 t, u64 a, u64 b`
 
 | kind | | `t` | `a` | `b` | `flag` | `name` |
 |---|---|---|---|---|---|---|
-| 1 | slice | start | task id | end | how it ended: 0 finished, 1 yielded, 2 suspended | what the task is |
-| 2 | created | time | task id | id of the parent task (0: none) | | what the task is |
-| 3 | suspend | time | task id | | | the reason |
-| 4 | resumed | time | task id | | | what woke it |
-| 5 | fulfilled | time | id of the future | task that was running (0: none) | | |
+| 1 | slice | start | task number | end | how it ended: 0 finished, 1 yielded, 2 suspended | what the task is |
+| 2 | created | time | task number | number of the parent task (0: none) | | what the task is |
+| 3 | suspend | time | task number | | | the reason |
+| 4 | resumed | time | task number | | | what woke it |
+| 5 | fulfilled | time | id of the future | number of the task that was running (0: none) | | |
 | 6 | continuation | time | id of the future whose value the continuation uses | task that was running | | |
-| 7 | stolen | time | task id | victim worker | | |
+| 7 | stolen | time | task number | victim worker | | |
 
-`worker` is the worker thread (for *stolen*: the thief). A task that suspends and resumes has one *slice* for every time it ran. A task can run another one inside (then the slices are nested). The id of a task is its address, the id of a future the address of its shared state: *fulfilled* and *continuation* of the same future belong together, and show which task handed a value to which.
+`worker` is the worker thread (for *stolen*: the thief). A task that suspends and resumes has one *slice* for every time it ran. A task can run another one inside (then the slices are nested). The **number of a task** is unique for the whole run: the index of the OS thread that created it in the upper bits, a counter of that thread below (HPX reuses its task objects, so their addresses are not unique). The id of a future is the address of its shared state: a *continuation* belongs to the latest earlier *fulfilled* with the same id, and shows which task handed a value to which.
 
-Table of names: `EDUHPXN1`, `u32 count`, then for every name `u32 id, u16 length, bytes`. The names are the descriptions HPX gives its tasks (mostly the name of the function or of the action).
+Table of names: `EDUHPXN1`, `u32 count`, then for every name `u32 id, u16 length, bytes`. The name is the description of the task: for an action, and for a function given a name with `hpx::annotated_function`, that name; for any other function (a lambda) the address of the function, written as the name of the function if its file exports it, else `<file>+0x<offset in the file>`, which `addr2line -e <file> 0x<offset>` or `nm -C <file>` turns into a function (the file has to have its symbols). HPX keeps the description of the tasks only if it was built with `HPX_WITH_TASK_TRACE_NAMES=ON` (`install-hpx.sh --with-task-trace` does that).
