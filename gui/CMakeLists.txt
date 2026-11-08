@@ -38,6 +38,7 @@ set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(qml/ExampleList.qml PROPERTIES QT_RESOURCE_ALIAS ExampleList.qml)
 set_source_files_properties(qml/Tree3D.qml PROPERTIES QT_RESOURCE_ALIAS Tree3D.qml)
 set_source_files_properties(qml/ThreadView.qml PROPERTIES QT_RESOURCE_ALIAS ThreadView.qml)
+set_source_files_properties(qml/MatrixView.qml PROPERTIES QT_RESOURCE_ALIAS MatrixView.qml)
 
 qt_add_qml_module(eduhpx
     URI EduHPX
@@ -47,6 +48,7 @@ qt_add_qml_module(eduhpx
         qml/ExampleList.qml
         qml/Tree3D.qml
         qml/ThreadView.qml
+        qml/MatrixView.qml
     SOURCES
         src/run_file.h
         src/run_file.cpp

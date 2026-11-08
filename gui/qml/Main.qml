@@ -1339,12 +1339,13 @@ ApplicationWindow {
         // choose the view
         RowLayout {
             Layout.fillWidth: true
-            visible: run.loaded && (hpxWindow.groups.length > 0 || tasks.loaded)
+            visible: (run.loaded && (hpxWindow.groups.length > 0 || tasks.loaded)) || (!run.loaded && tasks.loaded)
             spacing: 4
             Button { text: "By locality"; visible: hpxWindow.groups.length > 0; checkable: true; checked: hpxWindow.viewMode === "locality"; onClicked: { hpxWindow.viewMode = "locality"; lanes.requestPaint(); } }
             Button { text: "By message"; visible: hpxWindow.groups.length > 0; checkable: true; checked: hpxWindow.viewMode === "message"; onClicked: { hpxWindow.viewMode = "message"; waterfall.requestPaint(); } }
             Button { text: "Tree"; visible: hpxWindow.hasTree; checkable: true; checked: hpxWindow.viewMode === "tree"; onClicked: { hpxWindow.viewMode = "tree"; tree.requestPaint(); } }
             Button { text: "3D tree"; visible: hpxWindow.hasTree; checkable: true; checked: hpxWindow.viewMode === "tree3d"; onClicked: hpxWindow.viewMode = "tree3d" }
+            Button { text: "Matrix"; visible: hpxWindow.groups.length > 0 || tasks.loaded; checkable: true; checked: hpxWindow.viewMode === "matrix"; onClicked: hpxWindow.viewMode = "matrix" }
             Button { text: "Threads"; checkable: true; checked: hpxWindow.threads; onClicked: hpxWindow.viewMode = "threads" }
             Button { text: "Threads busy"; visible: tasks.loaded && hpxWindow.viewMode === "locality"; checkable: true; checked: hpxWindow.showCpu; onClicked: hpxWindow.showCpu = checked }
             Button { text: "Reset zoom"; visible: !hpxWindow.threads && hpxWindow.groups.length > 0; onClicked: hpxWindow.select(hpxWindow.current) }
@@ -1383,7 +1384,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: !hpxWindow.threads && (run.loaded || !tasks.loaded)     // also the dark panel of the start page; hidden in the thread view
+            visible: !hpxWindow.threads && (run.loaded || !tasks.loaded || hpxWindow.viewMode === "matrix")     // also the dark panel of the start page; hidden in the thread view
             color: "#2b2b2b"
             border.color: "#222222"
             clip: true
@@ -1820,6 +1821,14 @@ ApplicationWindow {
                 }
             }
 
+            // ---------------------------------------------------------------- view 5: who exchanged data with whom, between and inside localities
+            MatrixView {
+                anchors.fill: parent
+                visible: hpxWindow.viewMode === "matrix"
+                win: hpxWindow
+                file: tasks
+            }
+
             // ---------------------------------------------------------------- view 4: the tree in 3D, with the nodes of the cluster
             // loaded only when it is asked for: it needs Qt Quick 3D and a graphics card; if that is missing only this view is lost
             Loader {
@@ -2047,7 +2056,7 @@ ApplicationWindow {
         // legend (wraps in a narrow window) and the details of what is under the mouse
         Flow {
             Layout.fillWidth: true
-            visible: run.loaded && !hpxWindow.treeView && !hpxWindow.threads
+            visible: run.loaded && !hpxWindow.treeView && !hpxWindow.threads && hpxWindow.viewMode !== "matrix"
             spacing: 12
             Row { spacing: 5; Rectangle { width: 20; height: 10; color: hpxWindow.waitColor; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "waits for data" } }
             Row { spacing: 5; Rectangle { width: 20; height: 10; color: hpxWindow.preColor; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "HPX prepares" } }
@@ -2077,7 +2086,7 @@ ApplicationWindow {
         }
         Label {
             Layout.fillWidth: true
-            visible: run.loaded && hpxWindow.viewMode !== "tree3d" && !hpxWindow.threads
+            visible: run.loaded && hpxWindow.viewMode !== "tree3d" && !hpxWindow.threads && hpxWindow.viewMode !== "matrix"
             color: "#dddddd"
             elide: Text.ElideRight
             text: {

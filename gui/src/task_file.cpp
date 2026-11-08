@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
+#include <QMap>
 #include <QSet>
 #include <QList>
 #include <QPair>
@@ -117,6 +118,9 @@ void TaskFile::unload()
     m_deps.clear();
     m_rowLabels.clear();
     m_rowLoc.clear();
+    m_rowWorker.clear();
+    m_hands.clear();
+    m_handsBuilt = false;
     m_internalSlices = 0;
     m_nameInternal.clear();
     m_names.clear();
@@ -256,6 +260,7 @@ bool TaskFile::load(const QUrl &url)
             m_nameTotal[s.name] += s.t1 - s.t0;
         }
         m_rowLoc.append(int(kv.first >> 16));
+        m_rowWorker.append(int(kv.first & 0xFFFF));
         m_rowLabels.append(QStringLiteral("L%1 w%2").arg(kv.first >> 16).arg(kv.first & 0xFFFF));
         m_sliceCount += int(v.size());
         m_rows.append(std::move(v));
@@ -289,11 +294,103 @@ bool TaskFile::load(const QUrl &url)
     return true;
 }
 
+void TaskFile::buildHandovers() const
+{
+    m_hands.clear();
+    m_handsBuilt = true;
+    struct T
+    {
+        double t0 = 1e300, t1 = -1e300;
+        int firstRow = -1, lastRow = -1;
+        quint64 parent = 0;
+        qint32 name = -1;
+    };
+    QHash<quint64, T> tasks;
+    for (int r = 0; r < m_rows.size(); ++r)
+        for (const Slice &s : m_rows[r]) {
+            T &t = tasks[s.task];
+            if (s.t0 < t.t0) {
+                t.t0 = s.t0;
+                t.firstRow = r;
+                t.parent = s.parent;
+                t.name = s.name;
+            }
+            if (s.t1 > t.t1) {
+                t.t1 = s.t1;
+                t.lastRow = r;
+            }
+        }
+    auto ours = [&](const T &t) {      // a task of the program: not HPX itself, not the driver hpx_main
+        if (t.name < 0)
+            return false;
+        if (m_names.value(t.name).startsWith(QLatin1String("hpx_main")))
+            return false;
+        return !(m_hideInternal && m_nameInternal.value(t.name) != 0);
+    };
+    for (auto it = tasks.constBegin(); it != tasks.constEnd(); ++it) {
+        const T &c = it.value();
+        if (c.parent == 0 || !ours(c))
+            continue;
+        const auto pit = tasks.constFind(c.parent);
+        if (pit == tasks.constEnd() || !ours(*pit))
+            continue;
+        const int pr = pit->lastRow, cr = c.firstRow;
+        if (pr < 0 || cr < 0 || m_rowLoc[pr] != m_rowLoc[cr])
+            continue;
+        m_hands.append({m_rowLoc[cr], m_rowWorker[pr], m_rowWorker[cr], c.t0});
+    }
+}
+
+QVector<double> TaskFile::handoverTotals(double a, double b) const
+{
+    if (!m_handsBuilt)
+        buildHandovers();
+    QMap<int, QPair<double, double>> perLoc;
+    for (const Hand &h : std::as_const(m_hands))
+        if (h.t >= a && h.t <= b) {
+            auto &e = perLoc[h.loc];
+            e.first += 1;
+            e.second += h.from != h.to ? 1 : 0;
+        }
+    QVector<double> out;
+    for (auto it = perLoc.constBegin(); it != perLoc.constEnd(); ++it)
+        out << it.key() << it.value().first << it.value().second;
+    return out;
+}
+
+QVariantMap TaskFile::handoverMatrix(int loc, double a, double b) const
+{
+    if (!m_handsBuilt)
+        buildHandovers();
+    QVector<int> workers;
+    for (int r = 0; r < m_rows.size(); ++r)
+        if (m_rowLoc[r] == loc)
+            workers << m_rowWorker[r];
+    std::sort(workers.begin(), workers.end());
+    const int n = int(workers.size());
+    QVector<double> counts(n * n, 0.0);
+    for (const Hand &h : std::as_const(m_hands))
+        if (h.loc == loc && h.t >= a && h.t <= b) {
+            const int i = int(std::lower_bound(workers.begin(), workers.end(), h.from) - workers.begin());
+            const int j = int(std::lower_bound(workers.begin(), workers.end(), h.to) - workers.begin());
+            if (i < n && j < n)
+                counts[i * n + j] += 1;
+        }
+    QVariantList w;
+    for (int x : std::as_const(workers))
+        w << x;
+    QVariantMap out;
+    out["workers"] = w;
+    out["counts"] = QVariant::fromValue(counts);
+    return out;
+}
+
 void TaskFile::setHideInternal(bool hide)
 {
     if (hide == m_hideInternal)
         return;
     m_hideInternal = hide;
+    m_handsBuilt = false;
     emit filterChanged();
 }
 

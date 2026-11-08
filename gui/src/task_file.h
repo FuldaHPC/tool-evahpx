@@ -44,6 +44,12 @@ public:
     Q_INVOKABLE bool load(const QUrl &file);
     Q_INVOKABLE void unload();
 
+    // Values that one task handed to another one inside a locality (the consumer was made by the producer: for a dataflow
+    // the task that finished its last input), counted when the consumer starts in the window [a, b]. Only tasks of the program.
+    // handoverTotals: flat list of loc, count, count on another worker thread. handoverMatrix: workers (their numbers) and counts,
+    // n * n values, row = the worker of the producer, column = the worker of the consumer.
+    Q_INVOKABLE QVector<double> handoverTotals(double a, double b) const;
+    Q_INVOKABLE QVariantMap handoverMatrix(int loc, double a, double b) const;
     // The chain of tasks that decided how long the run took: from the task that ended last, back along "made by"
     // (for a dataflow that is the task that finished its last input) to the first one. A map: count (tasks), spanUs (from the
     // start of the first to the end of the last), runUs (time one of them was running), byName [{name, us}] and slices, a flat list
@@ -119,6 +125,15 @@ private:
     bool m_hideInternal = true;
     QVector<char> m_nameInternal;         // per name: a task of HPX itself
     int m_internalSlices = 0;
+    struct Hand
+    {
+        int loc, from, to;
+        double t;
+    };
+    void buildHandovers() const;
+    mutable QVector<Hand> m_hands;
+    mutable bool m_handsBuilt = false;
+    QVector<int> m_rowWorker;
     QVector<int> m_rowLoc;                // the locality of every row
     QVector<Dep> m_deps;
     QVector<int> m_nameCount;
