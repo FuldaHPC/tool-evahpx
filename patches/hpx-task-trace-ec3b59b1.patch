@@ -320,16 +320,18 @@ index db64806..e01e7e7 100644
                          std::remove_pointer_t<decltype(thrd_data)>;
                      work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..f33d334 100644
+index 1b39ce6..d366a05 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
-@@ -24,6 +24,18 @@
+@@ -24,6 +24,21 @@
  #include <string_view>
  #include <utility>
  #include <vector>
 +#include <algorithm>
++#include <condition_variable>
 +#include <ctime>
 +#include <deque>
++#include <thread>
 +#include <unordered_map>
 +#if defined(__x86_64__) || defined(__i386__)
 +#include <x86intrin.h>
@@ -337,12 +339,13 @@ index 1b39ce6..f33d334 100644
 +#if !defined(_WIN32)
 +#include <cxxabi.h>
 +#include <dlfcn.h>
++#include <link.h>
 +#include <unistd.h>
 +#endif
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +771,424 @@ namespace hpx::tracing {
+@@ -759,4 +774,624 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -439,15 +442,42 @@ index 1b39ce6..f33d334 100644
 +            }
 +        }
 +
++        constexpr std::size_t block_records = 4096;    // records per block: 128 KB
++#if !defined(TASK_LOG_MAX_BLOCKS)
++#define TASK_LOG_MAX_BLOCKS 512
++#endif
++
 +        struct task_log_t
 +        {
 +            bool const enabled = g_task_log_enabled.load();
 +            std::uint64_t const max_bytes = max_megabytes() * 1024ULL * 1024ULL;
 +
++            // the idle workers of the scheduler run the task "background_work" over and over: without
++            // HPX_TASK_LOG_BACKGROUND those slices are left out, they only fill the file
++            bool const background = std::getenv("HPX_TASK_LOG_BACKGROUND") != nullptr;
++
 +            std::mutex mtx;    // guards the file, the names and the counters; the hot path does not take it
 +            std::FILE* file = nullptr;
 +            std::uint64_t written = 0;
-+            std::uint64_t dropped = 0;
++            std::uint64_t dropped = 0;    // records not written because of the size cap
++
++            // Full blocks of records are handed to a thread of their own that writes them, so that a worker never
++            // waits for the disk. At most max_blocks blocks (64 MB) are kept; if the writer falls behind, the
++            // block that is full is not written (and counted), the worker goes on.
++            struct block
++            {
++                std::size_t n;
++                task_rec rec[block_records];
++            };
++            static constexpr std::size_t max_blocks = TASK_LOG_MAX_BLOCKS;
++            std::mutex qmtx;
++            std::condition_variable qcv;
++            std::deque<block*> queue;
++            std::vector<block*> free_blocks;
++            std::size_t allocated = 0;
++            bool stop = false;
++            std::thread writer;
++            std::atomic<std::uint64_t> dropped_busy{0};    // records not written because the writer was behind
 +            std::uint64_t ticks0 = 0, wall0 = 0;
 +            std::deque<std::string> names;    // a deque: the strings do not move, the threads keep pointers to them
 +            std::unordered_map<std::string, std::uint32_t> index;
@@ -518,10 +548,83 @@ index 1b39ce6..f33d334 100644
 +                written += n * sizeof(task_rec);
 +            }
 +
++            // a block for a worker, nullptr if the writer is behind
++            block* acquire()
++            {
++                std::lock_guard<std::mutex> l(qmtx);
++                if (!free_blocks.empty())
++                {
++                    block* b = free_blocks.back();
++                    free_blocks.pop_back();
++                    return b;
++                }
++                if (allocated < max_blocks)
++                {
++                    ++allocated;
++                    return new block;
++                }
++                return nullptr;
++            }
++
++            void release(block* b)
++            {
++                std::lock_guard<std::mutex> l(qmtx);
++                free_blocks.push_back(b);
++            }
++
++            // b->n records are in b: the writer takes it (and gives it back when it is written)
++            void submit(block* b)
++            {
++                {
++                    std::lock_guard<std::mutex> l(qmtx);
++                    if (stop)    // the log is closed already: a thread that outlives the program
++                    {
++                        free_blocks.push_back(b);
++                        return;
++                    }
++                    queue.push_back(b);
++                    if (!writer.joinable())
++                        writer = std::thread([this] { writer_loop(); });
++                }
++                qcv.notify_one();
++            }
++
++            void writer_loop()
++            {
++                std::unique_lock<std::mutex> l(qmtx);
++                for (;;)
++                {
++                    qcv.wait(l, [this] { return !queue.empty() || stop; });
++                    if (queue.empty())
++                        break;    // closed and everything is written
++                    block* b = queue.front();
++                    queue.pop_front();
++                    l.unlock();
++                    write_block(b->rec, b->n);
++                    l.lock();
++                    free_blocks.push_back(b);
++                }
++            }
++
 +            ~task_log_t()
++            {
++                close();
++            }
++
++            // end of the program: write what is queued, then the names and the header
++            void close()
 +            {
 +                if (!enabled)
 +                    return;
++                {
++                    std::lock_guard<std::mutex> l(qmtx);
++                    if (stop)
++                        return;
++                    stop = true;
++                }
++                qcv.notify_all();
++                if (writer.joinable())
++                    writer.join();
 +                std::lock_guard<std::mutex> l(mtx);
 +                if (file != nullptr)
 +                {
@@ -564,13 +667,73 @@ index 1b39ce6..f33d334 100644
 +                    std::fprintf(stderr,
 +                        "HPX task log: size cap of %llu MB reached, %llu records were dropped (raise HPX_TASK_LOG_MAX_MB)\n",
 +                        (unsigned long long) (max_bytes >> 20), (unsigned long long) dropped);
++                if (dropped_busy.load() != 0)
++                    std::fprintf(stderr,
++                        "HPX task log: the disk was too slow, %llu records were dropped (use a faster disk, a local one, "
++                        "or HPX_TASK_LOG_SAMPLE=N)\n",
++                        (unsigned long long) dropped_busy.load());
 +            }
 +        };
 +
++        // the log lives until the program ends; at exit it is closed in an orderly way (threads that run longer
++        // find it closed and drop their records)
++        task_log_t* g_task_log = nullptr;
++
 +        task_log_t& task_log()
 +        {
-+            static task_log_t log;
-+            return log;
++            static task_log_t* const log = [] {
++                auto* p = new task_log_t;
++                g_task_log = p;
++                if (p->enabled)
++                    std::atexit([] {
++                        if (g_task_log != nullptr)
++                            g_task_log->close();
++                    });
++                return p;
++            }();
++            return *log;
++        }
++
++        // Is this the address of code? HPX names a task without a name by "the address of the function", but for
++        // a lambda it gives the address of the closure object (on a stack or the heap), different for every task.
++        // The executable parts of the loaded files are listed once (no lock afterwards, a binary search).
++        struct code_ranges
++        {
++            std::vector<std::pair<std::uintptr_t, std::uintptr_t>> r;
++
++            code_ranges()
++            {
++#if !defined(_WIN32)
++                dl_iterate_phdr(
++                    [](dl_phdr_info* info, std::size_t, void* data) -> int {
++                        auto* self = static_cast<code_ranges*>(data);
++                        for (int i = 0; i != info->dlpi_phnum; ++i)
++                        {
++                            ElfW(Phdr) const& ph = info->dlpi_phdr[i];
++                            if (ph.p_type == PT_LOAD && (ph.p_flags & PF_X) != 0)
++                                self->r.emplace_back(info->dlpi_addr + ph.p_vaddr, info->dlpi_addr + ph.p_vaddr + ph.p_memsz);
++                        }
++                        return 0;
++                    },
++                    this);
++                std::sort(r.begin(), r.end());
++#endif
++            }
++
++            bool contains(std::uintptr_t a) const noexcept
++            {
++                auto it = std::upper_bound(r.begin(), r.end(), std::make_pair(a, ~std::uintptr_t{0}));
++                if (it == r.begin())
++                    return false;
++                --it;
++                return a >= it->first && a < it->second;
++            }
++        };
++
++        bool is_code_address(std::size_t addr)
++        {
++            static code_ranges const ranges;
++            return ranges.contains(addr);
 +        }
 +
 +        // a function address as text: the name of the function if the file exports it, else <file>+0x<offset>
@@ -605,10 +768,10 @@ index 1b39ce6..f33d334 100644
 +        // another one inside, so a small stack), and a cache from the address of a description to its number
 +        struct task_tls
 +        {
-+            static constexpr std::size_t capacity = 4096;
++            static constexpr std::size_t capacity = block_records;
 +            static constexpr int max_depth = 8;
 +
-+            task_rec buf[capacity];
++            task_log_t::block* cur = nullptr;    // the block that is filled
 +            std::uint32_t n = 0;
 +
 +            struct frame
@@ -616,6 +779,7 @@ index 1b39ce6..f33d334 100644
 +                std::uint64_t task;
 +                std::uint64_t start;
 +                std::uint32_t name;
++                bool skip;    // a task that is not recorded
 +            };
 +            frame stack[max_depth];
 +            int depth = 0;
@@ -627,42 +791,71 @@ index 1b39ce6..f33d334 100644
 +                std::size_t addr;
 +                char const* stable;
 +                std::uint32_t id;
++                bool skip;
 +            };
 +            cache_entry cache[256] = {};
 +
 +            ~task_tls()
 +            {
-+                flush();
-+            }
-+
-+            void flush()
-+            {
++                if (cur == nullptr)
++                    return;
 +                if (n != 0)
 +                {
-+                    task_log().write_block(buf, n);
-+                    n = 0;
++                    cur->n = n;
++                    task_log().submit(cur);
 +                }
++                else
++                    task_log().release(cur);
++                cur = nullptr;
 +            }
 +
 +            void push(task_rec const& r)
 +            {
-+                buf[n++] = r;
++                if (cur == nullptr && (cur = task_log().acquire()) == nullptr)
++                {
++                    task_log().dropped_busy.fetch_add(1, std::memory_order_relaxed);
++                    return;
++                }
++                cur->rec[n++] = r;
 +                if (n == capacity)
-+                    flush();
++                {
++                    task_log_t::block* next = task_log().acquire();
++                    if (next == nullptr)    // the writer is behind: this block is not written, the buffer is used again
++                    {
++                        task_log().dropped_busy.fetch_add(n, std::memory_order_relaxed);
++                        n = 0;
++                        return;
++                    }
++                    cur->n = n;
++                    task_log().submit(cur);
++                    cur = next;
++                    n = 0;
++                }
 +            }
 +
 +            // descriptions are mostly string literals: the address finds the number, a compare makes sure
 +            // that the address was not used for another text meanwhile
 +            std::uint32_t intern(char const* s)
 +            {
++                bool skip = false;
++                return intern(s, skip);
++            }
++
++            // skip is set for tasks that are not recorded (the idle loop of the scheduler)
++            std::uint32_t intern(char const* s, bool& skip)
++            {
 +                if (s == nullptr)
 +                    s = "<none>";
 +                cache_entry& e = cache[(reinterpret_cast<std::uintptr_t>(s) >> 3) & 255];
 +                if (e.key == s && e.addr == 0 && e.stable != nullptr && std::strcmp(e.stable, s) == 0)
++                {
++                    skip = e.skip;
 +                    return e.id;
++                }
 +                char const* stable = nullptr;
 +                std::uint32_t const id = task_log().intern_slow(s, stable);
-+                e = {s, 0, stable, id};
++                skip = !task_log().background && std::strcmp(stable, "background_work") == 0;
++                e = {s, 0, stable, id, skip};
 +                return id;
 +            }
 +
@@ -674,13 +867,18 @@ index 1b39ce6..f33d334 100644
 +                    return e.id;
 +                char const* stable = nullptr;
 +                std::uint32_t const id = task_log().intern_slow(describe_address(addr).c_str(), stable);
-+                e = {nullptr, addr, stable, id};
++                e = {nullptr, addr, stable, id, false};
 +                return id;
 +            }
 +
-+            std::uint32_t name_of(char const* name, std::size_t addr)
++            std::uint32_t name_of(char const* name, std::size_t addr, bool& skip)
 +            {
-+                return name != nullptr ? intern(name) : (addr != 0 ? intern_address(addr) : intern(nullptr));
++                skip = false;
++                if (name != nullptr)
++                    return intern(name, skip);
++                if (addr != 0 && is_code_address(addr))    // a function
++                    return intern_address(addr);
++                return intern("<unnamed task>");           // a lambda: HPX does not tell what it is
 +            }
 +
 +            std::uint64_t running() const noexcept
@@ -709,28 +907,33 @@ index 1b39ce6..f33d334 100644
 +    void task_log_created(std::uint64_t serial, std::uint64_t parent, char const* name, std::size_t addr) noexcept
 +    {
 +        task_tls& s = tls();
-+        std::uint32_t const id = s.name_of(name, addr);
-+        s.push({k_created, 0, s.worker, id, task_ticks(), serial, parent});
++        bool skip = false;
++        std::uint32_t const id = s.name_of(name, addr, skip);
++        if (!skip)
++            s.push({k_created, 0, s.worker, id, task_ticks(), serial, parent});
 +    }
 +
 +    void task_log_executing(std::uint64_t serial, char const* name, std::size_t addr, std::size_t worker) noexcept
 +    {
 +        task_tls& s = tls();
 +        s.worker = static_cast<std::uint16_t>(worker);
-+        std::uint32_t const id = s.name_of(name, addr);
++        bool skip = false;
++        std::uint32_t const id = s.name_of(name, addr, skip);
 +        if (s.depth < task_tls::max_depth)
-+            s.stack[s.depth] = {serial, task_ticks(), id};
++            s.stack[s.depth] = {serial, skip ? 0 : task_ticks(), id, skip};
 +        ++s.depth;
 +    }
 +
 +    // the slice of a task ends: it finished (0), yielded (1) or suspended (2)
 +    void task_log_ended(std::uint64_t serial, std::uint8_t how, char const* reason) noexcept
 +    {
-+        std::uint64_t const end = task_ticks();
 +        task_tls& s = tls();
 +        if (s.depth <= 0)
 +            return;
 +        --s.depth;
++        if (s.depth < task_tls::max_depth && s.stack[s.depth].skip)
++            return;    // not recorded: no slice, no suspend
++        std::uint64_t const end = task_ticks();
 +        if (s.depth < task_tls::max_depth && s.stack[s.depth].task == serial)
 +        {
 +            auto const& f = s.stack[s.depth];
