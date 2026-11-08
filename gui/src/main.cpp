@@ -61,6 +61,13 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
                 std::printf("SCROLL step %d scrollY=%f contentH=%f\n", i, root->property("scrollY").toDouble(), root->property("contentH").toDouble());
             }
         }
+        if (!qEnvironmentVariable("EDUHPX_THREAD_WINDOW").isEmpty()) {     // test: the part of the task view that is shown, "from,to" in ms
+            const QStringList w = qEnvironmentVariable("EDUHPX_THREAD_WINDOW").split(QLatin1Char(','));
+            if (w.size() == 2) {
+                QMetaObject::invokeMethod(root, "showThreadWindow", Q_ARG(QVariant, w[0].toDouble()), Q_ARG(QVariant, w[1].toDouble()));
+                wait(400);
+            }
+        }
         if (!qEnvironmentVariable("EDUHPX_3D_SELECT").isEmpty()) {     // test: the 3D tree looks at this locality
             QMetaObject::invokeMethod(root, "select3dLocality", Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_3D_SELECT").toInt()));
             wait(900);

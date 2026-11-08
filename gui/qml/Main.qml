@@ -19,7 +19,7 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 860
-    title: run.loaded ? "EduHPX - " + run.name : "EduHPX"
+    title: run.loaded ? "EduHPX - " + run.name : tasks.loaded ? "EduHPX - " + tasks.name : "EduHPX"
     color: "#4d4d4d"
     minimumWidth: 900
     minimumHeight: 660
@@ -28,8 +28,8 @@ ApplicationWindow {
     menuBar: MenuBar {
         Menu {
             title: "File"
-            MenuItem { text: "Open run file..."; onTriggered: fileDialog.open() }
-            MenuItem { text: "Start page"; enabled: run.loaded; onTriggered: run.unload() }
+            MenuItem { text: "Open run or task file..."; onTriggered: fileDialog.open() }
+            MenuItem { text: "Start page"; enabled: run.loaded || tasks.loaded; onTriggered: { run.unload(); tasks.unload(); } }
             MenuItem { text: "Examples..."; onTriggered: examplesDialog.open() }
             MenuSeparator { }
             MenuItem { text: "Quit"; onTriggered: Qt.quit() }
@@ -271,7 +271,18 @@ ApplicationWindow {
 
     // open a run file (a URL; also called from the command line and by drag and drop)
     function openFile(url) {
-        run.load(url);
+        if (tasks.isTaskFile(url)) {            // a task file (what the worker threads did) or a run file
+            run.unload();
+            tasks.load(url);
+        } else {
+            tasks.unload();
+            run.load(url);
+        }
+    }
+    // for the tests: the part of the task view that is shown, in milliseconds after the start of the run
+    function showThreadWindow(fromMs, toMs) {
+        threadView.viewA = tasks.tmin + fromMs * 1000;
+        threadView.viewB = tasks.tmin + toMs * 1000;
     }
     // for the tests: the critical path of every group as JSON (eduhpx with EDUHPX_PATH_REPORT=1 prints it)
     function pathReport() {
@@ -1001,6 +1012,10 @@ ApplicationWindow {
             + (r.action ? "   [" + r.action.split("<")[0] + "]" : "");
     }
 
+    TaskFile {
+        id: tasks
+    }
+
     RunFile {
         id: run
         onChanged: {
@@ -1015,9 +1030,9 @@ ApplicationWindow {
 
     FileDialog {
         id: fileDialog
-        title: "Open a run file"
-        nameFilters: ["EduHPX run file (*.csv)", "All files (*)"]
-        onAccepted: run.load(selectedFile)
+        title: "Open a run file or a task file"
+        nameFilters: ["EduHPX run or task file (*.csv)", "All files (*)"]
+        onAccepted: hpxWindow.openFile(selectedFile)
     }
 
     Dialog {
@@ -1053,23 +1068,36 @@ ApplicationWindow {
             Layout.fillWidth: true
             spacing: 10
             Button {
-                text: "Open run..."
+                text: "Open file..."
                 onClicked: fileDialog.open()
             }
             Button {
                 text: "Start page"
-                visible: run.loaded
-                onClicked: run.unload()
+                visible: run.loaded || tasks.loaded
+                onClicked: { run.unload(); tasks.unload(); }
             }
             Label {
                 Layout.fillWidth: true
-                color: run.error !== "" ? "#ff8a80" : "white"
+                color: run.error !== "" || tasks.error !== "" ? "#ff8a80" : "white"
                 elide: Text.ElideRight
                 text: run.error !== "" ? run.error
+                    : tasks.error !== "" ? tasks.error
+                    : tasks.loaded ? "Tasks " + tasks.name + " - " + tasks.taskCount + " tasks in " + tasks.sliceCount + " slices on "
+                                     + tasks.rowLabels.length + " worker threads"
                     : run.loaded ? "Run " + run.name + " - " + hpxWindow.groups.length + " groups, " + run.messages.length + " parcels"
                                    + (hpxWindow.skipped > 0 ? " (" + hpxWindow.skipped + " without MPI data are not shown)" : "")
                     : ""
             }
+        }
+
+        // what the worker threads did (a task file)
+        ThreadView {
+            id: threadView
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: tasks.loaded
+            file: tasks
+            win: hpxWindow
         }
 
         // choose the group
@@ -1333,6 +1361,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: run.loaded
             color: "#2b2b2b"
             border.color: "#222222"
             clip: true
@@ -2033,7 +2062,7 @@ ApplicationWindow {
         anchors.leftMargin: 20
         anchors.rightMargin: 20
         anchors.bottomMargin: 16
-        visible: !run.loaded
+        visible: !run.loaded && !tasks.loaded
         spacing: 12
         Image {
             Layout.alignment: Qt.AlignHCenter
@@ -2047,8 +2076,8 @@ ApplicationWindow {
         RowLayout {
             Layout.alignment: Qt.AlignHCenter
             spacing: 14
-            Label { color: "#cccccc"; text: "Open a run file (.csv) or drop it here" }
-            Button { text: "Open run file..."; onClicked: fileDialog.open() }
+            Label { color: "#cccccc"; text: "Open a run file or a task file (.csv) or drop it here" }
+            Button { text: "Open file..."; onClicked: fileDialog.open() }
         }
         Rectangle {
             Layout.fillWidth: true

@@ -37,6 +37,7 @@ endforeach()
 set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(qml/ExampleList.qml PROPERTIES QT_RESOURCE_ALIAS ExampleList.qml)
 set_source_files_properties(qml/Tree3D.qml PROPERTIES QT_RESOURCE_ALIAS Tree3D.qml)
+set_source_files_properties(qml/ThreadView.qml PROPERTIES QT_RESOURCE_ALIAS ThreadView.qml)
 
 qt_add_qml_module(eduhpx
     URI EduHPX
@@ -45,9 +46,12 @@ qt_add_qml_module(eduhpx
         qml/Main.qml
         qml/ExampleList.qml
         qml/Tree3D.qml
+        qml/ThreadView.qml
     SOURCES
         src/run_file.h
         src/run_file.cpp
+        src/task_file.h
+        src/task_file.cpp
     RESOURCES
         assets/logo.png
         assets/icon_256.png

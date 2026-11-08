@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # eduhpx-run: run a program with the measuring MPI and the patched HPX and write the EduHPX run file.
 #
-#   eduhpx-run [--mpi PREFIX] [--hpx PREFIX] [--out DIR] [--name NAME] [--no-clock] [--clock-file F] [--only-collectives] -- mpirun -np 16 ./app args...
+#   eduhpx-run [--mpi PREFIX] [--hpx PREFIX] [--out DIR] [--name NAME] [--tasks] [--no-clock] [--clock-file F] [--only-collectives] -- mpirun -np 16 ./app args...
 #
 # It sets the environment (HPX parcel log, MPI log directory, library paths), measures the clock offsets between the
 # nodes of a Slurm job, starts the command and, when it is done, makes DIR/run.csv (eduhpx-merge). Open it with EduHPX.
 # DIR must be visible on all nodes (shared file system); the logs are small (about 1 MB per rank and second of traffic).
+# --tasks also records what the worker threads of HPX do (needs the HPX of install-hpx.sh --with-task-trace) and makes DIR/tasks.csv.
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-MPI=${EDUHPX_MPI_PREFIX:-}; HPX=${EDUHPX_HPX_PREFIX:-}; OUT=; NAME=; CLOCK=1; CLOCKFILE=; MERGEOPT=()
-usage() { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+MPI=${EDUHPX_MPI_PREFIX:-}; HPX=${EDUHPX_HPX_PREFIX:-}; OUT=; NAME=; CLOCK=1; CLOCKFILE=; MERGEOPT=(); TASKS=0
+usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 while [ $# -gt 0 ]; do
   case $1 in
     --mpi) MPI=$2; shift 2 ;; --hpx) HPX=$2; shift 2 ;; --out) OUT=$2; shift 2 ;; --name) NAME=$2; shift 2 ;;
-    --no-clock) CLOCK=0; shift ;; --clock-file) CLOCKFILE=$2; shift 2 ;; --only-collectives) MERGEOPT+=(--only-collectives); shift ;; -h|--help) usage 0 ;; --) shift; break ;; *) echo "eduhpx-run: unknown option $1" >&2; usage 1 ;;
+    --tasks) TASKS=1; shift ;; --no-clock) CLOCK=0; shift ;; --clock-file) CLOCKFILE=$2; shift 2 ;; --only-collectives) MERGEOPT+=(--only-collectives); shift ;; -h|--help) usage 0 ;; --) shift; break ;; *) echo "eduhpx-run: unknown option $1" >&2; usage 1 ;;
   esac
 done
 [ $# -gt 0 ] || { echo "eduhpx-run: no command (put it after --)" >&2; usage 1; }
@@ -22,6 +23,7 @@ libs() { for d in "$1/lib64" "$1/lib"; do [ -d "$d" ] && printf "%s:" "$d"; done
 [ -n "$MPI" ] && { export PATH="$MPI/bin:$PATH"; export LD_LIBRARY_PATH="$(libs "$MPI")${LD_LIBRARY_PATH:-}"; }
 [ -n "$HPX" ] && export LD_LIBRARY_PATH="$(libs "$HPX")${LD_LIBRARY_PATH:-}"
 export HPX_PARCEL_LOG="$OUT/parcels" EDUHPX_MPI_LOG_DIR="$OUT"
+[ "$TASKS" = 1 ] && export HPX_TASK_LOG="$OUT/tasks"      # process N writes $OUT/tasks.tasks.loc<N>.bin
 if ! command -v mpirun >/dev/null 2>&1 && [ -z "${SLURM_JOB_ID:-}" ]; then echo "eduhpx-run: mpirun not found (use --mpi PREFIX)" >&2; exit 1; fi
 
 # several nodes in a Slurm job: offsets between the clocks (ping-pong, as NTP), the merge corrects the times with them
@@ -42,11 +44,14 @@ fi
 # the launcher has to hand the environment on to the other nodes
 CMD=("$@")
 case $(basename "${CMD[0]}") in
-  mpirun|mpiexec) CMD=("${CMD[0]}" -x HPX_PARCEL_LOG -x EDUHPX_MPI_LOG_DIR -x LD_LIBRARY_PATH -x PATH "${CMD[@]:1}") ;;
+  mpirun|mpiexec) CMD=("${CMD[0]}" -x HPX_PARCEL_LOG -x EDUHPX_MPI_LOG_DIR $([ "$TASKS" = 1 ] && echo "-x HPX_TASK_LOG") -x LD_LIBRARY_PATH -x PATH "${CMD[@]:1}") ;;
 esac
 echo "eduhpx-run: logs go to $OUT"
 "${CMD[@]}"; rc=$?
 [ $rc -eq 0 ] || echo "eduhpx-run: the program ended with exit code $rc, merging what was recorded" >&2
+if [ "$TASKS" = 1 ]; then
+  python3 "$HERE/eduhpx-tasks" "$OUT" -o "$OUT/tasks.csv" --run "$NAME" || echo "eduhpx-run: the task file could not be made" >&2
+fi
 python3 "$HERE/eduhpx-merge" "$OUT" -o "$OUT/run.csv" --run "$NAME" "${MERGEOPT[@]+"${MERGEOPT[@]}"}" || { echo "eduhpx-run: merge failed" >&2; exit 1; }
 echo "eduhpx-run: done. Open $OUT/run.csv with EduHPX."
 exit $rc

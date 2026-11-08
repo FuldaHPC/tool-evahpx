@@ -53,7 +53,7 @@ def read(path):
             off += ln
     else:
         t1, w1 = t0 + 1, w0 + 1    # no calibration at the end: the clock rate is unknown
-    records = [_REC.unpack_from(data, o) for o in range(64, end, _REC.size)]
+    records = list(_REC.iter_unpack(memoryview(data)[64:end]))
     return TaskLog(path, rank, pid, names, records, t0, w0, t1, w1, complete)
 
 

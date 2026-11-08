@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""eduhpx-tasks RUN_DIR|FILE... [-o tasks.csv] [--run NAME] [--min-us N]
+
+Makes the task file of EduHPX (CSV, see docs/task_file_format.md) out of the task logs of HPX (HPX_TASK_LOG, see
+docs/task_log_format.md): one row for every time a task ran on a worker thread, and the links between the tasks.
+  RUN_DIR      the run directory of eduhpx-run: all <prefix>.tasks.loc<rank>.bin in it. If it holds clock_offsets.csv and the
+               MPI logs (eduhpx.mpi.<rank>.bin) the times of the other nodes are corrected, as eduhpx-merge does for run.csv
+  FILE...      task logs; --clock-offsets FILE and --nodes 0=nodeA,1=nodeB can give the corrections by hand
+Standard library only."""
+import argparse
+import bisect
+import csv
+import glob
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import eduhpx_tasklog as tl  # noqa: E402
+
+
+def node_of_rank(run_dir, rank):
+    """Name of the node of a locality, from the header of its MPI log (bytes 24 to 56)."""
+    path = os.path.join(run_dir, "eduhpx.mpi.%d.bin" % rank)
+    try:
+        with open(path, "rb") as f:
+            head = f.read(64)
+        return head[24:56].split(b"\0")[0].decode() if head[:8] == b"EDUHPXM1" else None
+    except OSError:
+        return None
+
+
+def read_offsets(path):
+    offsets = {}
+    with open(path) as f:
+        for line in f:
+            f_ = line.strip().split(",")
+            if len(f_) == 3 and f_[0] != "node":
+                offsets[f_[0]] = float(f_[2])
+    return offsets
+
+
+def us(v):
+    return ("%.3f" % v).rstrip("0").rstrip(".")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("inputs", nargs="+")
+    ap.add_argument("-o", "--output", help="task file (default: RUN_DIR/tasks.csv, or tasks.csv)")
+    ap.add_argument("--run", default="", help="name shown in the viewer")
+    ap.add_argument("--min-us", type=float, default=0.0, help="leave out the slices shorter than this (microseconds)")
+    ap.add_argument("--clock-offsets", help="clock_offsets.csv (node,index,offset_us)")
+    ap.add_argument("--nodes", default="", help="the node of every locality: 0=compute-00,1=compute-01,...")
+    a = ap.parse_args()
+
+    run_dir = None
+    paths = []
+    for p in a.inputs:
+        if os.path.isdir(p):
+            run_dir = os.path.abspath(p)
+            paths += sorted(glob.glob(os.path.join(run_dir, "*.tasks.loc*.bin")))
+        else:
+            paths.append(p)
+    if not paths:
+        sys.exit("eduhpx-tasks: no task logs (*.tasks.loc<rank>.bin) found")
+    out = a.output or os.path.join(run_dir or ".", "tasks.csv")
+    name = a.run or (os.path.basename(run_dir) if run_dir else os.path.basename(out))
+    offsets = {}
+    if a.clock_offsets:
+        offsets = read_offsets(a.clock_offsets)
+    elif run_dir and os.path.exists(os.path.join(run_dir, "clock_offsets.csv")):
+        offsets = read_offsets(os.path.join(run_dir, "clock_offsets.csv"))
+    nodes = dict((int(k), v) for k, v in (x.split("=") for x in a.nodes.split(",") if "=" in x))
+
+    rows, deps, steals = [], [], []
+    n_tasks = n_slices = 0
+    workers = {}
+    for path in paths:
+        log = tl.read(path)
+        loc = log.rank
+        node = nodes.get(loc) or (node_of_rank(run_dir, loc) if run_dir else None)
+        off = offsets.get(node, 0.0) if node else 0.0
+        wall = lambda t: log.wall_us(t) + off  # noqa: E731
+        recs = sorted(log.records, key=lambda r: r[4])    # in time order
+        created = {}                                      # task -> (time, parent, name)
+        last_fulfilled = {}                               # future -> (time, task)
+        for kind, flag, worker, nid, t, x, y in recs:
+            if kind == 2:
+                created.setdefault(x, (wall(t), y, log.name(nid)))
+            elif kind == 5:
+                last_fulfilled[x] = (wall(t), y)
+            elif kind == 6:
+                f = last_fulfilled.get(x)
+                if f is not None and f[1] and y and f[1] != y:
+                    deps.append((loc, f[1], y, f[0], wall(t)))
+            elif kind == 7:
+                steals.append((loc, worker, y, x, wall(t)))
+        seen = set()
+        for kind, flag, worker, nid, t, x, y in recs:
+            if kind != 1:
+                continue
+            t0, t1 = wall(t), wall(y)
+            if t1 - t0 < a.min_us:
+                continue
+            c = created.get(x)
+            rows.append((loc, worker, x, log.name(nid), t0, t1, tl.ENDS.get(flag, "?"), c[1] if c else 0, c[0] if c else None))
+            workers.setdefault(loc, set()).add(worker)
+            seen.add(x)
+            n_slices += 1
+        n_tasks += len(seen)
+        if not log.complete:
+            print("eduhpx-tasks: %s was not closed (no names, times not calibrated)" % path, file=sys.stderr)
+
+    rows.sort(key=lambda r: (r[0], r[1], r[4]))
+    with open(out, "w", newline="") as f:
+        f.write("# eduhpx_tasks_csv 1\n")
+        f.write("# run=%s localities=%d tasks=%d slices=%d deps=%d steals=%d\n" % (
+            name.replace(" ", "_"), len(workers), n_tasks, n_slices, len(deps), len(steals)))
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(["kind", "loc", "worker", "task", "name", "t0", "t1", "end", "parent", "created", "peer"])
+        for loc, worker, task, nm, t0, t1, end, parent, created in rows:
+            w.writerow(["slice", loc, worker, task, nm, us(t0), us(t1), end, parent or "", us(created) if created else "", ""])
+        for loc, frm, to, t0, t1 in deps:
+            w.writerow(["dep", loc, "", frm, "", us(t0), us(t1), "", "", "", to])
+        for loc, thief, victim, task, t in steals:
+            w.writerow(["steal", loc, thief, task, "", us(t), "", "", "", "", victim])
+    print("eduhpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals" % (
+        out, len(workers), n_tasks, n_slices, len(deps), len(steals)))
+
+
+if __name__ == "__main__":
+    main()
