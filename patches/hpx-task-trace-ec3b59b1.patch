@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d40c03d..b94067f 100644
+index d40c03d..5d1a049 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1821,6 +1821,19 @@ hpx_option(
+@@ -1821,6 +1821,21 @@ hpx_option(
    ADVANCED
  )
  
@@ -17,6 +17,8 @@ index d40c03d..b94067f 100644
 +if(HPX_WITH_TASK_TRACE_NAMES)
 +  hpx_add_config_define(HPX_HAVE_THREAD_DESCRIPTION)
 +  hpx_add_config_define(HPX_HAVE_THREAD_DESCRIPTION_FULL)
++  # a task keeps a reference to the task that created it: the task log shows what a task was made by
++  hpx_add_config_define(HPX_HAVE_THREAD_PARENT_REFERENCE)
 +endif()
 +
  # If APEX is defined, the action timers need thread debug info.
@@ -51,6 +53,52 @@ index f1c0c01..55df53c 100644
          // handle thread interruption
          bool interruption_requested() const noexcept
          {
+diff --git a/libs/core/threading_base/include/hpx/threading_base/thread_init_data.hpp b/libs/core/threading_base/include/hpx/threading_base/thread_init_data.hpp
+index 9bd3a5b..aea6b2c 100644
+--- a/libs/core/threading_base/include/hpx/threading_base/thread_init_data.hpp
++++ b/libs/core/threading_base/include/hpx/threading_base/thread_init_data.hpp
+@@ -67,6 +67,9 @@ namespace hpx::threads {
+             parent_locality_id = rhs.parent_locality_id;
+             parent_id = HPX_MOVE(rhs.parent_id);
+             parent_phase = rhs.parent_phase;
++#if defined(HPX_HAVE_TRACY)
++            parent_serial = rhs.parent_serial;
++#endif
+ #endif
+             timer_data = HPX_MOVE(rhs.timer_data);
+             return *this;
+@@ -82,6 +85,9 @@ namespace hpx::threads {
+           , parent_locality_id(rhs.parent_locality_id)
+           , parent_id(HPX_MOVE(rhs.parent_id))
+           , parent_phase(rhs.parent_phase)
++#if defined(HPX_HAVE_TRACY)
++          , parent_serial(rhs.parent_serial)
++#endif
+ #endif
+           , timer_data(HPX_MOVE(rhs.timer_data))
+           , schedulehint(rhs.schedulehint)
+@@ -120,6 +126,10 @@ namespace hpx::threads {
+           , run_now(run_now_)
+           , scheduler_base(scheduler_base_)
+         {
++#if defined(HPX_HAVE_THREAD_PARENT_REFERENCE) && defined(HPX_HAVE_TRACY)
++            if (hpx::tracing::detail::task_log_on())
++                parent_serial = hpx::tracing::detail::task_log_running_serial();
++#endif
+             if (initial_state == thread_schedule_state::staged)
+             {
+                 HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
+@@ -137,6 +147,10 @@ namespace hpx::threads {
+         std::uint32_t parent_locality_id;
+         threads::thread_id_type parent_id;
+         std::size_t parent_phase;
++#if defined(HPX_HAVE_TRACY)
++        // number of the task that created this one (task log), 0: none; the task is staged first and made later by the scheduler
++        std::uint64_t parent_serial = 0;
++#endif
+ #endif
+         HPX_NO_UNIQUE_ADDRESS hpx::tracing::task_timer_data timer_data;
+ 
 diff --git a/libs/core/threading_base/src/detail/task_sampling.cpp b/libs/core/threading_base/src/detail/task_sampling.cpp
 index 7f7e6c0..ab5aa58 100644
 --- a/libs/core/threading_base/src/detail/task_sampling.cpp
@@ -81,10 +129,10 @@ index 7f7e6c0..ab5aa58 100644
          // Per-worker sampling state. last_rate is the rate value that seeded
          // the current countdown; when it disagrees with the runtime rate, the
 diff --git a/libs/core/threading_base/src/thread_data.cpp b/libs/core/threading_base/src/thread_data.cpp
-index 6bae9a9..3a16785 100644
+index 6bae9a9..e548649 100644
 --- a/libs/core/threading_base/src/thread_data.cpp
 +++ b/libs/core/threading_base/src/thread_data.cpp
-@@ -119,6 +119,9 @@ namespace hpx::threads {
+@@ -119,8 +119,17 @@ namespace hpx::threads {
          // Decide once per task creation whether this task's lifecycle is
          // sampled. Safe unlocked: the object is not yet observable.
          emit_lifecycle_ = hpx::threads::detail::should_sample_next();
@@ -92,9 +140,18 @@ index 6bae9a9..3a16785 100644
 +            hpx::tracing::detail::task_log_new_serial() :
 +            0;
  #endif
-         hpx::tracing::task_created(this, parent_task_id);
+-        hpx::tracing::task_created(this, parent_task_id);
++        hpx::tracing::task_created(this, parent_task_id,
++#if defined(HPX_HAVE_TRACY)
++            init_data.parent_serial
++#else
++            0
++#endif
++        );
      }
-@@ -259,6 +262,9 @@ namespace hpx::threads {
+ 
+     thread_data::~thread_data()
+@@ -259,6 +268,9 @@ namespace hpx::threads {
          // Fresh 1/N decision for the recycled slab. Safe unlocked: no
          // other worker can see it during rebind.
          emit_lifecycle_ = hpx::threads::detail::should_sample_next();
@@ -104,11 +161,26 @@ index 6bae9a9..3a16785 100644
  #endif
  
          runs_as_child_.store(init_data.schedulehint.runs_as_child_mode() ==
+@@ -328,7 +340,13 @@ namespace hpx::threads {
+ #endif
+         set_timer_data(init_data.timer_data);
+ 
+-        hpx::tracing::task_created(this, parent_task_id);
++        hpx::tracing::task_created(this, parent_task_id,
++#if defined(HPX_HAVE_TRACY)
++            init_data.parent_serial
++#else
++            0
++#endif
++        );
+     }
+ 
+ #if defined(HPX_HAVE_THREAD_DESCRIPTION)
 diff --git a/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp b/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp
-index 7302f25..1e3754e 100644
+index 7302f25..de97fda 100644
 --- a/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp
 +++ b/libs/core/tracing/include/hpx/tracing/backends/tracy.hpp
-@@ -44,6 +44,34 @@ namespace hpx::tracing {
+@@ -44,6 +44,36 @@ namespace hpx::tracing {
          {
              return hpx::tracy::is_profiler_connected();
          }
@@ -124,6 +196,8 @@ index 7302f25..1e3754e 100644
 +
 +        // a number for a new task, unique for the whole run (the address of a task object is reused)
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT std::uint64_t task_log_new_serial() noexcept;
++        // number of the task that runs on this OS thread now, 0: none
++        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT std::uint64_t task_log_running_serial() noexcept;
 +
 +        // the facade functions of tracing.hpp call these (they know the type of the task); name is the
 +        // description of the task, or nullptr and addr = the address of its function
@@ -143,7 +217,7 @@ index 7302f25..1e3754e 100644
      }    // namespace detail
  
      ////////////////////////////////////////////////////////////////////////////
-@@ -525,6 +553,8 @@ namespace hpx::tracing {
+@@ -525,6 +555,8 @@ namespace hpx::tracing {
      HPX_CXX_CORE_EXPORT inline void future_fulfilled(
          void const* future_id, char const* desc = nullptr) noexcept
      {
@@ -152,7 +226,7 @@ index 7302f25..1e3754e 100644
          if (!detail::is_profiler_connected())
              return;
          detail::future_fulfilled_impl(future_id, desc);
-@@ -551,6 +581,8 @@ namespace hpx::tracing {
+@@ -551,6 +583,8 @@ namespace hpx::tracing {
          // Counter update runs unconditionally so the tally stays consistent
          // across connect/disconnect transitions -- see g_active_continuations.
          detail::g_active_continuations.fetch_add(1, std::memory_order_relaxed);
@@ -162,10 +236,10 @@ index 7302f25..1e3754e 100644
              return;
          detail::continuation_run_emit(task_id);
 diff --git a/libs/core/tracing/include/hpx/tracing/tracing.hpp b/libs/core/tracing/include/hpx/tracing/tracing.hpp
-index db64806..e01e7e7 100644
+index db64806..8366c94 100644
 --- a/libs/core/tracing/include/hpx/tracing/tracing.hpp
 +++ b/libs/core/tracing/include/hpx/tracing/tracing.hpp
-@@ -144,6 +144,30 @@ namespace hpx::tracing {
+@@ -144,15 +144,53 @@ namespace hpx::tracing {
  }    // namespace hpx::tracing
  #endif
  
@@ -196,7 +270,11 @@ index db64806..e01e7e7 100644
  namespace hpx::tracing {
  
      template <typename ThreadData>
-@@ -153,6 +177,19 @@ namespace hpx::tracing {
+     constexpr void task_created([[maybe_unused]] ThreadData* thrdptr,
+-        [[maybe_unused]] void const* parent_task_id = nullptr) noexcept
++        [[maybe_unused]] void const* parent_task_id = nullptr,
++        [[maybe_unused]] std::uint64_t parent_serial = 0) noexcept
+     {
  #if defined(HPX_HAVE_TRACING)
          if (!thrdptr->should_emit_lifecycle())
              return;
@@ -209,14 +287,14 @@ index db64806..e01e7e7 100644
 +            detail::task_log_created(thrdptr->trace_serial(),
 +                parent_task_id != nullptr ?
 +                    static_cast<ThreadData const*>(parent_task_id)->trace_serial() :
-+                    0,
++                    parent_serial,
 +                name, addr);
 +        }
 +#endif
          task_created(ThreadData::get_safe_description(
                           thrdptr->get_description(), "thread"),
              thrdptr, parent_task_id);
-@@ -165,6 +202,16 @@ namespace hpx::tracing {
+@@ -165,6 +203,16 @@ namespace hpx::tracing {
  #if defined(HPX_HAVE_TRACING)
          if (!thrdptr->should_emit_lifecycle())
              return;
@@ -233,7 +311,7 @@ index db64806..e01e7e7 100644
          task_executing(thrdptr,
              ThreadData::get_safe_description(
                  thrdptr->get_description(), "thread"),
-@@ -185,6 +232,12 @@ namespace hpx::tracing {
+@@ -185,6 +233,12 @@ namespace hpx::tracing {
          auto* thrdptr = get_thread_id_data(id);
          if (!thrdptr->should_emit_lifecycle())
              return;
@@ -246,7 +324,7 @@ index db64806..e01e7e7 100644
          using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
          task_yielded(thrdptr,
              thread_data_type::get_safe_description(
-@@ -201,6 +254,16 @@ namespace hpx::tracing {
+@@ -201,6 +255,16 @@ namespace hpx::tracing {
          if (!thrdptr->should_emit_lifecycle())
              return;
          using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
@@ -263,7 +341,7 @@ index db64806..e01e7e7 100644
          if constexpr (std::is_convertible_v<String, char const*>)
          {
              task_suspended(thrdptr,
-@@ -227,6 +290,16 @@ namespace hpx::tracing {
+@@ -227,6 +291,16 @@ namespace hpx::tracing {
          if (!thrdptr->should_emit_lifecycle())
              return;
          using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
@@ -280,7 +358,7 @@ index db64806..e01e7e7 100644
          if constexpr (std::is_convertible_v<StateX, char const*>)
          {
              task_resumed(thrdptr,
-@@ -250,6 +323,12 @@ namespace hpx::tracing {
+@@ -250,6 +324,12 @@ namespace hpx::tracing {
  #if defined(HPX_HAVE_TRACING)
          if (!thrdptr->should_emit_lifecycle())
              return;
@@ -293,7 +371,7 @@ index db64806..e01e7e7 100644
          task_completed(thrdptr,
              ThreadData::get_safe_description(
                  thrdptr->get_description(), "thread"));
-@@ -268,6 +347,12 @@ namespace hpx::tracing {
+@@ -268,6 +348,12 @@ namespace hpx::tracing {
          {
              if (!thrd_data->should_emit_lifecycle())
                  return;
@@ -306,7 +384,7 @@ index db64806..e01e7e7 100644
              using thread_data_type = std::remove_pointer_t<decltype(thrd_data)>;
              work_stolen(thief_id, victim_id, thrd_data,
                  thread_data_type::get_safe_description(
-@@ -290,6 +375,12 @@ namespace hpx::tracing {
+@@ -290,6 +376,12 @@ namespace hpx::tracing {
                  {
                      if (!thrd_data->should_emit_lifecycle())
                          continue;
@@ -320,7 +398,7 @@ index db64806..e01e7e7 100644
                          std::remove_pointer_t<decltype(thrd_data)>;
                      work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..0c88fc0 100644
+index 1b39ce6..dac2685 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
 @@ -24,6 +24,21 @@
@@ -345,7 +423,7 @@ index 1b39ce6..0c88fc0 100644
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +774,626 @@ namespace hpx::tracing {
+@@ -759,4 +774,637 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -874,6 +952,12 @@ index 1b39ce6..0c88fc0 100644
 +            std::uint32_t name_of(char const* name, std::size_t addr, bool& skip)
 +            {
 +                skip = false;
++                // some tasks hand over the address of their code where a name should be: that is no text
++                if (name != nullptr && is_code_address(reinterpret_cast<std::size_t>(name)))
++                {
++                    addr = reinterpret_cast<std::size_t>(name);
++                    name = nullptr;
++                }
 +                if (name != nullptr)
 +                    return intern(name, skip);
 +                if (addr != 0 && is_code_address(addr))    // a function
@@ -902,6 +986,11 @@ index 1b39ce6..0c88fc0 100644
 +        thread_local std::uint64_t const thread_index = next_thread.fetch_add(1, std::memory_order_relaxed);
 +        thread_local std::uint64_t counter = 0;
 +        return (thread_index << 40) | ++counter;
++    }
++
++    std::uint64_t task_log_running_serial() noexcept
++    {
++        return tls().running();
 +    }
 +
 +    void task_log_created(std::uint64_t serial, std::uint64_t parent, char const* name, std::size_t addr) noexcept
