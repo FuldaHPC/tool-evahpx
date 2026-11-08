@@ -1069,6 +1069,7 @@ ApplicationWindow {
             spacing: 10
             Button {
                 text: "Open file..."
+                visible: run.loaded || tasks.loaded     // the start page has its own button
                 onClicked: fileDialog.open()
             }
             Button {
