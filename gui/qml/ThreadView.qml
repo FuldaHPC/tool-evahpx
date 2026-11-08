@@ -23,7 +23,7 @@ Item {
 
     readonly property int labelW: 70
     readonly property int axisH: 30
-    readonly property int legendH: 58
+    readonly property int legendH: 80
     readonly property int nRows: file && file.loaded ? file.rowLabels.length : 0
     readonly property real plotW: Math.max(width - labelW - 14, 10)
     readonly property real plotH: Math.max(height - axisH - legendH, 10)
@@ -285,11 +285,20 @@ Item {
         }
     }
 
+    // how to read the picture
+    Text {
+        x: root.labelW; y: root.axisH + root.plotH + 5
+        width: root.plotW
+        color: "#bbbbbb"; font.pixelSize: 11; wrapMode: Text.WordWrap
+        text: "One row = one worker thread (a core that runs HPX tasks), time runs to the right. A bar = a task that ran there, the colour is its name (below). "
+            + "Empty = the thread was idle. Scroll = zoom, drag = move, hover = details, click a bar = its parent (cyan) and children (yellow)."
+    }
+
     // the names of the tasks that take the most time
     Flow {
-        x: root.labelW; y: root.axisH + root.plotH + 6
+        x: root.labelW; y: root.axisH + root.plotH + 40
         width: root.plotW - 110
-        height: root.legendH - 8
+        height: root.legendH - 42
         clip: true
         spacing: 12
         Repeater {

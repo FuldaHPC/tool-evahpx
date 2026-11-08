@@ -1361,7 +1361,7 @@ ApplicationWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: run.loaded
+            visible: run.loaded || !tasks.loaded     // also the dark panel of the start page; hidden only in the thread view
             color: "#2b2b2b"
             border.color: "#222222"
             clip: true
