@@ -72,7 +72,7 @@ def main():
         offsets = read_offsets(os.path.join(run_dir, "clock_offsets.csv"))
     nodes = dict((int(k), v) for k, v in (x.split("=") for x in a.nodes.split(",") if "=" in x))
 
-    rows, deps, steals, parcels = [], [], [], []      # parcels: (loc, worker, 'send'/'recv', task, name, t0, t1, parcel id)
+    rows, deps, steals, parcels, wakes = [], [], [], [], []      # parcels: (loc, worker, 'send'/'recv', task, name, t0, t1, parcel id)
     n_tasks = n_slices = 0
     workers = {}
     for path in paths:
@@ -86,11 +86,17 @@ def main():
         recs = sorted(log.records, key=lambda r: r[4])    # in time order
         created = {}                                      # task -> (time, parent, name)
         last_fulfilled = {}                               # future -> (time, task)
+        fulfilled_on = {}                                 # future -> (time, worker): where a value was set
+        waits = []                                        # (time, worker, future, task): a task is about to block on a future
+        starts = {}                                       # task -> [(start, worker)] of its slices
         for kind, flag, worker, nid, t, x, y in recs:
             if kind == 2:
                 created.setdefault(x, (wall(t), y, log.name(nid)))
             elif kind == 5:
                 last_fulfilled[x] = (wall(t), y)
+                fulfilled_on[x] = (wall(t), worker)
+            elif kind == 12:
+                waits.append((wall(t), worker, x, y))
             elif kind == 6:
                 f = last_fulfilled.get(x)
                 if f is not None and f[1] and y and f[1] != y:
@@ -124,9 +130,19 @@ def main():
                 continue
             c = created.get(x)
             rows.append((loc, worker, gid(x), log.name(nid), t0, t1, tl.ENDS.get(flag, "?"), gid(c[1]) if c else 0, c[0] if c else None))
+            starts.setdefault(x, []).append((t0, worker))
             workers.setdefault(loc, set()).add(worker)
             seen.add(x)
             n_slices += 1
+        # a value that was set on one worker thread wakes a task that goes on on another one: the communication inside the locality
+        for tw, wk, fut, task in waits:
+            f = fulfilled_on.get(fut)
+            if not task or f is None or f[0] < tw - 5:
+                continue
+            nxt = [st for st in starts.get(task, []) if st[0] >= f[0]]
+            if nxt:
+                t_next, wx = min(nxt)
+                wakes.append((loc, f[1], gid(task), f[0], t_next, wx))
         n_tasks += len(seen)
         if not log.complete:
             print("eduhpx-tasks: %s was not closed (no names, times not calibrated)" % path, file=sys.stderr)
@@ -144,10 +160,12 @@ def main():
             w.writerow(["dep", loc, "", frm, "", us(t0), us(t1), "", "", "", to])
         for loc, thief, victim, task, t in steals:
             w.writerow(["steal", loc, thief, task, "", us(t), "", "", "", "", victim])
+        for loc, wf, task, tf, tn, wx in wakes:                    # a value set on worker wf woke the task, which went on on worker wx
+            w.writerow(["wake", loc, wf, task, "", us(tf), us(tn), "", "", "", wx])
         for loc, wk, what, task, nm, t0, t1, pid in parcels:      # which thread sent / ran the action of which parcel (the id as in run.csv)
             w.writerow([what, loc, wk, task or "", nm, us(t0), us(t1) if t1 != "" else "", "", "", "", pid])
-    print("eduhpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals, %d parcel records" % (
-        out, len(workers), n_tasks, n_slices, len(deps), len(steals), len(parcels)))
+    print("eduhpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals, %d parcel records, %d wake-ups" % (
+        out, len(workers), n_tasks, n_slices, len(deps), len(steals), len(parcels), len(wakes)))
 
 
 if __name__ == "__main__":

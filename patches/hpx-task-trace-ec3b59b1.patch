@@ -24,6 +24,31 @@ index d40c03d..5d1a049 100644
  # If APEX is defined, the action timers need thread debug info.
  if(HPX_WITH_APEX)
    hpx_add_config_define(HPX_HAVE_THREAD_DESCRIPTION)
+diff --git a/libs/core/futures/src/future_data.cpp b/libs/core/futures/src/future_data.cpp
+index 2a0f1cb..389bcbb 100644
+--- a/libs/core/futures/src/future_data.cpp
++++ b/libs/core/futures/src/future_data.cpp
+@@ -26,6 +26,11 @@
+ #include <mutex>
+ #include <utility>
+ 
++namespace hpx::tracing::detail {
++    // the task log (see tracy.cpp): a task is about to block on a future
++    HPX_CORE_EXPORT void task_log_future_wait(void const* future) noexcept;
++}    // namespace hpx::tracing::detail
++
+ namespace hpx::lcos::detail {
+ 
+     namespace {
+@@ -381,6 +386,8 @@ namespace hpx::lcos::detail {
+             s = state_.load(std::memory_order_relaxed);
+             if (s == empty)
+             {
++                if (hpx::tracing::detail::task_log_on())
++                    hpx::tracing::detail::task_log_future_wait(this);
+                 cond_.wait(l, "future_data_base::wait", ec);
+                 if (ec)
+                 {
 diff --git a/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp b/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp
 index f1c0c01..55df53c 100644
 --- a/libs/core/threading_base/include/hpx/threading_base/thread_data.hpp
@@ -398,7 +423,7 @@ index db64806..8366c94 100644
                          std::remove_pointer_t<decltype(thrd_data)>;
                      work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..1c6837e 100644
+index 1b39ce6..1c2614b 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
 @@ -24,6 +24,21 @@
@@ -423,7 +448,7 @@ index 1b39ce6..1c6837e 100644
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +774,660 @@ namespace hpx::tracing {
+@@ -759,4 +774,668 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -473,7 +498,8 @@ index 1b39ce6..1c6837e 100644
 +            k_parcel_begin = 8,      // a = msb and b = lsb of the id of a parcel: its action starts to run on this worker (name = the action)
 +            k_parcel_end = 9,        // the same parcel: the action is done
 +            k_parcel_sent = 10,      // a = msb, b = lsb: the running task sends this parcel from this worker
-+            k_parcel_sender = 11     // a = lsb of the parcel of the record before, b = number of the task that sends it (0: none)
++            k_parcel_sender = 11,    // a = lsb of the parcel of the record before, b = number of the task that sends it (0: none)
++            k_future_wait = 12       // a = id of a future, b = number of the task (0: none) that is about to block on it; see fulfilled (5)
 +        };
 +
 +        struct task_rec
@@ -997,6 +1023,7 @@ index 1b39ce6..1c6837e 100644
 +        return tls().running();
 +    }
 +
++    HPX_CORE_EXPORT void task_log_future_wait(void const* future) noexcept;
 +    HPX_CORE_EXPORT void task_log_parcel_exec(bool begin, std::uint64_t msb, std::uint64_t lsb, char const* action) noexcept;
 +    HPX_CORE_EXPORT void task_log_parcel_sent(std::uint64_t msb, std::uint64_t lsb) noexcept;
 +
@@ -1006,6 +1033,12 @@ index 1b39ce6..1c6837e 100644
 +        bool skip = false;
 +        std::uint32_t const id = begin && action != nullptr ? s.intern(action, skip) : 0;
 +        s.push({begin ? k_parcel_begin : k_parcel_end, 0, s.worker, id, task_ticks(), msb, lsb});
++    }
++
++    void task_log_future_wait(void const* future) noexcept
++    {
++        task_tls& s = tls();
++        s.push({k_future_wait, 0, s.worker, 0, task_ticks(), reinterpret_cast<std::uint64_t>(future), s.running()});
 +    }
 +
 +    void task_log_parcel_sent(std::uint64_t msb, std::uint64_t lsb) noexcept

@@ -119,6 +119,7 @@ void TaskFile::unload()
     m_rowLabels.clear();
     m_rowLoc.clear();
     m_parcels.clear();
+    m_wakes.clear();
     m_rowIndex.clear();
     m_rowWorker.clear();
     m_hands.clear();
@@ -227,6 +228,8 @@ bool TaskFile::load(const QUrl &url)
                 e.recvLoc = std::atoi(field(1));
                 e.recvWorker = std::atoi(field(2));
             }
+        } else if (qstrcmp(kind, "wake") == 0) {     // a value set on one worker thread woke a task that went on on another
+            m_wakes.append({std::atoi(field(1)), std::atoi(field(2)), std::atoi(field(10)), std::strtod(field(5), nullptr), std::strtod(field(6), nullptr)});
         } else if (qstrcmp(kind, "dep") == 0) {
             rawDeps.append({std::strtoull(field(3), nullptr, 10), std::strtoull(field(10), nullptr, 10),
                             std::strtod(field(5), nullptr), std::strtod(field(6), nullptr)});
@@ -351,8 +354,29 @@ void TaskFile::buildHandovers() const
         const int pr = pit->lastRow, cr = c.firstRow;
         if (pr < 0 || cr < 0 || m_rowLoc[pr] != m_rowLoc[cr])
             continue;
-        m_hands.append({m_rowLoc[cr], m_rowWorker[pr], m_rowWorker[cr], c.t0});
+        m_hands.append({m_rowLoc[cr], m_rowWorker[pr], m_rowWorker[cr], c.t0, pit->t1, false});
     }
+    for (const Wake &w : std::as_const(m_wakes))
+        m_hands.append({w.loc, w.from, w.to, w.t1, w.t0, true});
+}
+
+QVector<double> TaskFile::handoverLines(double a, double b, int limit) const
+{
+    if (!m_handsBuilt)
+        buildHandovers();
+    QVector<double> out;
+    for (const Hand &h : std::as_const(m_hands)) {
+        if (out.size() / 6 >= limit)
+            break;
+        if (h.t < a || h.tFrom > b)
+            continue;
+        const int fr = m_rowIndex.value((quint32(h.loc) << 16) | quint32(h.from & 0xFFFF), -1);
+        const int to = m_rowIndex.value((quint32(h.loc) << 16) | quint32(h.to & 0xFFFF), -1);
+        if (fr < 0 || to < 0)
+            continue;
+        out << h.loc << fr << to << h.tFrom << h.t << (h.wake ? 1 : 0);
+    }
+    return out;
 }
 
 QVector<double> TaskFile::handoverTotals(double a, double b) const

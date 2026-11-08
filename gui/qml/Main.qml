@@ -1624,6 +1624,21 @@ ApplicationWindow {
                         ctx.strokeRect(xOf(m.pre.a), yOf(m.pre) - bh / 2, Math.max(xOf(m.pre.b) - xOf(m.pre.a), 2), bh);
                         ctx.strokeRect(xOf(m.rcv.a), yOf(m.rcv) - bh / 2, Math.max(xOf(m.rcv.b) - xOf(m.rcv.a), 3), bh);
                     }
+                    // with the threads shown: what is handed over inside a locality, from one worker thread to another (teal: a value that
+                    // was set on one thread woke a task that went on on the other; grey: a task made by a task of the other thread)
+                    if (hpxWindow.perThread && hpxWindow.stripH > 0 && tasks.loaded) {
+                        const hl = tasks.handoverLines(hpxWindow.viewStart, hpxWindow.viewEnd, 1500);
+                        ctx.lineWidth = 1.2;
+                        for (let k = 0; k + 5 < hl.length; k += 6) {
+                            const y0 = threadY(hl[k], hl[k + 1]), y1 = threadY(hl[k], hl[k + 2]);
+                            if (y0 < 0 || y1 < 0 || hl[k + 4] - hl[k + 3] > 0.5 * (hpxWindow.viewEnd - hpxWindow.viewStart))
+                                continue;                    // a hand-over that took longer than half of the window would only draw a long line
+                            const color = hl[k + 5] === 1 ? "#26c6da" : "rgba(210,210,210,0.55)";
+                            ctx.strokeStyle = color; ctx.fillStyle = color;
+                            ctx.beginPath(); ctx.moveTo(xOf(hl[k + 3]), y0); ctx.lineTo(xOf(hl[k + 4]), y1); ctx.stroke();
+                            ctx.beginPath(); ctx.arc(xOf(hl[k + 4]), y1, 2.2, 0, 2 * Math.PI); ctx.fill();
+                        }
+                    }
                     // with the threads shown: the thread that sent a parcel is joined to the send of its locality (green), the thread that ran
                     // the action of a parcel to the receive (red); the arrow between the localities stays the MPI message
                     if (hpxWindow.perThread && hpxWindow.stripH > 0) {
@@ -2156,7 +2171,7 @@ ApplicationWindow {
                     Label { color: "white"; text: modelData.name.length > 42 ? modelData.name.substring(0, 40) + "..." : modelData.name }
                 }
             }
-            Row { spacing: 5; visible: hpxWindow.stripH > 0 && hpxWindow.perThread; Rectangle { width: 10; height: 10; radius: 5; color: "#66bb6a"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that sent the parcel" } Rectangle { width: 10; height: 10; radius: 5; color: "#ef5350"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that ran its action" } }
+            Row { spacing: 5; visible: hpxWindow.stripH > 0 && hpxWindow.perThread; Rectangle { width: 10; height: 10; radius: 5; color: "#66bb6a"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that sent the parcel" } Rectangle { width: 10; height: 10; radius: 5; color: "#ef5350"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that ran its action" } Rectangle { width: 14; height: 3; color: "#26c6da"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "a value set on one thread wakes a task on another (inside the locality)" } }
             Label { color: "#ffd600"; font.bold: true; text: "gold = critical path"; visible: hpxWindow.criticalOn && hpxWindow.hasTree }
         }
         Label {

@@ -51,6 +51,9 @@ public:
     // n * n values, row = the worker of the producer, column = the worker of the consumer.
     Q_INVOKABLE QVector<double> handoverTotals(double a, double b) const;
     Q_INVOKABLE QVariantMap handoverMatrix(int loc, double a, double b) const;
+    // The hand-overs that overlap the window [a, b], at most limit, as a flat list of loc, row of the producer's thread, row of the
+    // consumer's thread, time of the producer, time of the consumer, 1 if the consumer was woken by a value (else made by the producer)
+    Q_INVOKABLE QVector<double> handoverLines(double a, double b, int limit) const;
     // The chain of tasks that decided how long the run took: from the task that ended last, back along "made by"
     // (for a dataflow that is the task that finished its last input) to the first one. A map: count (tasks), spanUs (from the
     // start of the first to the end of the last), runUs (time one of them was running), byName [{name, us}] and slices, a flat list
@@ -133,9 +136,17 @@ private:
     int m_internalSlices = 0;
     struct Hand
     {
-        int loc, from, to;
-        double t;
+        int loc, from, to;      // the locality and the worker threads of the producer and of the consumer
+        double t;               // when the consumer starts
+        double tFrom;           // when the producer ended / the value was set
+        bool wake;              // a task woken by a value (else: a task that was made by the producer)
     };
+    struct Wake
+    {
+        qint32 loc, from, to;
+        double t0, t1;
+    };
+    QVector<Wake> m_wakes;
     void buildHandovers() const;
     mutable QVector<Hand> m_hands;
     mutable bool m_handsBuilt = false;
