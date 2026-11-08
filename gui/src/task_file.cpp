@@ -360,6 +360,20 @@ void TaskFile::buildHandovers() const
         m_hands.append({w.loc, w.from, w.to, w.t1, w.t0, true});
 }
 
+QVariantMap TaskFile::wakeInto(int row, double t0) const
+{
+    QVariantMap out;
+    if (row < 0 || row >= m_rowLoc.size())
+        return out;
+    for (const Wake &w : std::as_const(m_wakes))
+        if (w.loc == m_rowLoc[row] && w.to == m_rowWorker[row] && std::abs(w.t1 - t0) < 2.0) {
+            out["from"] = w.from;
+            out["set"] = w.t0;
+            return out;
+        }
+    return out;
+}
+
 QVector<double> TaskFile::handoverLines(double a, double b, int limit) const
 {
     if (!m_handsBuilt)

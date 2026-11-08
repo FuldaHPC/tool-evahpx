@@ -53,6 +53,8 @@ public:
     Q_INVOKABLE QVariantMap handoverMatrix(int loc, double a, double b) const;
     // The hand-overs that overlap the window [a, b], at most limit, as a flat list of loc, row of the producer's thread, row of the
     // consumer's thread, time of the producer, time of the consumer, 1 if the consumer was woken by a value (else made by the producer)
+    // The wake-up that let a task go on at time t0 on the thread of the row: from (worker), set (time the value was set), empty if none
+    Q_INVOKABLE QVariantMap wakeInto(int row, double t0) const;
     Q_INVOKABLE QVector<double> handoverLines(double a, double b, int limit) const;
     // The chain of tasks that decided how long the run took: from the task that ended last, back along "made by"
     // (for a dataflow that is the task that finished its last input) to the first one. A map: count (tasks), spanUs (from the

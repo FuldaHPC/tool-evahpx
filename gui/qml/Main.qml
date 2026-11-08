@@ -90,6 +90,7 @@ ApplicationWindow {
     property var laneInfo: []
     property var laneMsgs: []
     property int laneHover: -1
+    property var threadHover: ({})      // the task under the mouse in a thread row of the lanes (name, times, row)
     property real emptyCall: 244         // size of a call without a value (the smallest call of the run)
     property real emptyAnswer: 154       // size of an answer without a value (the smallest answer of the run)
     property real scrollY: 0            // vertical scrolling of the locality and message views
@@ -1715,6 +1716,33 @@ ApplicationWindow {
                             hpxWindow.setView(startAt - dt, startAt - dt + (endAt - startAt));
                             return;
                         }
+                        // in a thread row (the threads are shown): the task under the mouse
+                        let found = null;
+                        if (hpxWindow.perThread && hpxWindow.stripH > 0 && tasks.loaded) {
+                            for (const l of hpxWindow.laneInfo) {
+                                const rows = tasks.rowsOf(l.loc);
+                                const k = Math.floor((e.y - l.y0 - 3) / hpxWindow.threadRowH);
+                                if (e.y >= l.y0 && k >= 0 && k < rows.length) {
+                                    const upp = (hpxWindow.viewEnd - hpxWindow.viewStart) / (lanes.width - lanes.leftMargin - lanes.rightMargin);
+                                    const sl = tasks.sliceAt(rows[k], lanes.tOf(e.x), 3 * upp);
+                                    if (sl.name !== undefined) {
+                                        sl.loc = l.loc;
+                                        sl.label = tasks.rowLabels[rows[k]].split(" ")[1];
+                                        sl.wake = tasks.wakeInto(rows[k], sl.t0);
+                                        found = sl;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        hpxWindow.threadHover = found ? found : ({});
+                        if (found) {
+                            if (hpxWindow.laneHover !== -1) {
+                                hpxWindow.laneHover = -1;
+                                lanes.requestPaint();
+                            }
+                            return;
+                        }
                         let best = -1, bestDist = 6;
                         const th = lanes.trackH * 0.7 / 2 + 2;
                         hpxWindow.laneMsgs.forEach((m, i) => {
@@ -2182,6 +2210,12 @@ ApplicationWindow {
             text: {
                 if (hpxWindow.viewMode === "tree")
                     return hpxWindow.treeInfoText(hpxWindow.treeHover >= 0 ? hpxWindow.treeEdges[hpxWindow.treeHover] : null);
+                if (hpxWindow.viewMode === "locality" && hpxWindow.threadHover.name !== undefined) {
+                    const h = hpxWindow.threadHover;
+                    return "L#" + h.loc + " " + (h.label === "other" ? "(a thread that is no worker of HPX)" : h.label) + ": " + h.name + ", runs " + hpxWindow.fmtUs(h.t1 - h.t0)
+                        + ", ends: " + h.end + (h.created >= 0 ? ", waited " + hpxWindow.fmtUs(Math.max(0, h.t0 - h.created)) + " after it was created" : "")
+                        + (h.wake.from !== undefined ? ", woken by a value set on w" + h.wake.from + " (" + hpxWindow.fmtUs(h.t0 - h.wake.set) + " before it went on)" : "");
+                }
                 const lm = hpxWindow.laneHover >= 0 ? hpxWindow.laneMsgs[hpxWindow.laneHover] : undefined;
                 const r = hpxWindow.viewMode === "locality"
                     ? (lm ? lm.row : null)
