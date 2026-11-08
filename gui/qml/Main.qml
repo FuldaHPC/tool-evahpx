@@ -1449,30 +1449,13 @@ ApplicationWindow {
                     const l = laneOf(piece.loc);
                     return l ? l.y0 + l.strip + lanePad / 2 + piece.track * trackH + trackH / 2 : 0;
                 }
-                // with the threads shown, the arrows start in the row of the thread that sent the parcel and end in the row of the
-                // thread that ran its action (when the task data know them), else at the work of the locality
+                // the row of a worker thread under its locality (-1: not known, or the threads are not shown)
                 function threadY(loc, row) {
                     const l = laneOf(loc);
                     if (!l || row < 0 || !hpxWindow.perThread || hpxWindow.stripH === 0)
                         return -1;
                     const k = tasks.rowsOf(loc).indexOf(row);
                     return k < 0 ? -1 : l.y0 + 3 + k * hpxWindow.threadRowH + hpxWindow.threadRowH / 2;
-                }
-                function yFrom(m) {
-                    if (hpxWindow.perThread && hpxWindow.stripH > 0 && m.row.id) {
-                        const y = threadY(m.row.src, tasks.parcelRows(m.row.id)[0]);
-                        if (y >= 0)
-                            return y;
-                    }
-                    return yOf(m.pre);
-                }
-                function yTo(m) {
-                    if (hpxWindow.perThread && hpxWindow.stripH > 0 && m.row.id) {
-                        const y = threadY(m.row.dst, tasks.parcelRows(m.row.id)[1]);
-                        if (y >= 0)
-                            return y;
-                    }
-                    return yOf(m.rcv);
                 }
                 // the arrow starts at the end of the MPI send call, but never after the end of the receive
                 // (big messages arrive while the sender is still in the call)
@@ -1620,7 +1603,7 @@ ApplicationWindow {
                         const m = msgs[i], r = m.row;
                         if (crit && r.crit)
                             continue;                                          // the critical path is drawn last, on top
-                        arrow(ctx, xOf(arrowStart(r)), yFrom(m), xOf(r.t1), yTo(m), dense ? 0.9 : 1.3,
+                        arrow(ctx, xOf(arrowStart(r)), yOf(m.pre), xOf(r.t1), yOf(m.rcv), dense ? 0.9 : 1.3,
                               crit ? "rgba(240,240,240,0.28)" : (dense ? "rgba(240,240,240,0.55)" : "rgba(255,255,255,0.95)"), true);
                     }
                     if (crit) {
@@ -1628,7 +1611,7 @@ ApplicationWindow {
                             const m = msgs[i], r = m.row;
                             if (!r.crit || i === hot)
                                 continue;
-                            arrow(ctx, xOf(arrowStart(r)), yFrom(m), xOf(r.t1), yTo(m), 3, "#ffd600", true);
+                            arrow(ctx, xOf(arrowStart(r)), yOf(m.pre), xOf(r.t1), yOf(m.rcv), 3, "#ffd600", true);
                             ctx.strokeStyle = "#ffd600"; ctx.lineWidth = 2;
                             ctx.strokeRect(xOf(m.pre.a), yOf(m.pre) - bh / 2, Math.max(xOf(m.pre.b) - xOf(m.pre.a), 2), bh);
                             ctx.strokeRect(xOf(m.rcv.a), yOf(m.rcv) - bh / 2, Math.max(xOf(m.rcv.b) - xOf(m.rcv.a), 3), bh);
@@ -1636,10 +1619,30 @@ ApplicationWindow {
                     }
                     if (hot >= 0 && hot < msgs.length) {
                         const m = msgs[hot], r = m.row;
-                        arrow(ctx, xOf(arrowStart(r)), yFrom(m), xOf(r.t1), yTo(m), 2.2, "#ff4081", true);
+                        arrow(ctx, xOf(arrowStart(r)), yOf(m.pre), xOf(r.t1), yOf(m.rcv), 2.2, "#ff4081", true);
                         ctx.strokeStyle = "#ff4081"; ctx.lineWidth = 1.5;
                         ctx.strokeRect(xOf(m.pre.a), yOf(m.pre) - bh / 2, Math.max(xOf(m.pre.b) - xOf(m.pre.a), 2), bh);
                         ctx.strokeRect(xOf(m.rcv.a), yOf(m.rcv) - bh / 2, Math.max(xOf(m.rcv.b) - xOf(m.rcv.a), 3), bh);
+                    }
+                    // with the threads shown: the thread that sent a parcel is joined to the send of its locality (green), the thread that ran
+                    // the action of a parcel to the receive (red); the arrow between the localities stays the MPI message
+                    if (hpxWindow.perThread && hpxWindow.stripH > 0) {
+                        const join = (x, y0, y1, color) => {
+                            ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1;
+                            ctx.beginPath(); ctx.moveTo(x + 0.5, y0); ctx.lineTo(x + 0.5, y1); ctx.stroke();
+                            ctx.beginPath(); ctx.arc(x + 0.5, y0, 2.4, 0, 2 * Math.PI); ctx.fill();
+                        };
+                        for (let i = 0; i < msgs.length; ++i) {
+                            const m = msgs[i], r = m.row;
+                            if (!r.id)
+                                continue;
+                            const ends = tasks.parcelRows(r.id);
+                            const ys = threadY(r.src, ends[0]), yr = threadY(r.dst, ends[1]);
+                            if (ys >= 0)
+                                join(xOf(r.tc >= 0 ? r.tc : r.t0s), ys, yOf(m.pre), "#66bb6a");
+                            if (yr >= 0)
+                                join(xOf(r.tr >= 0 ? r.tr : r.t1), yr, yOf(m.rcv), "#ef5350");
+                        }
                     }
                     // the time axis stays on top while the lanes scroll under it
                     ctx.fillStyle = "#2b2b2b";
@@ -1702,7 +1705,7 @@ ApplicationWindow {
                         hpxWindow.laneMsgs.forEach((m, i) => {
                             const r = m.row;
                             let d = hpxWindow.arrowShown(r)
-                                ? distToSegment(e.x, e.y, lanes.xOf(lanes.arrowStart(r)), lanes.yFrom(m), lanes.xOf(r.t1), lanes.yTo(m)) : 1e9;
+                                ? distToSegment(e.x, e.y, lanes.xOf(lanes.arrowStart(r)), lanes.yOf(m.pre), lanes.xOf(r.t1), lanes.yOf(m.rcv)) : 1e9;
                             if (Math.abs(e.y - lanes.yOf(m.pre)) <= th && e.x >= lanes.xOf(m.pre.a) - 2 && e.x <= lanes.xOf(m.pre.b) + 2)
                                 d = 0;
                             if (Math.abs(e.y - lanes.yOf(m.rcv)) <= th && e.x >= lanes.xOf(m.rcv.a) - 3 && e.x <= lanes.xOf(m.rcv.b) + 3)
@@ -2144,6 +2147,7 @@ ApplicationWindow {
             Row { spacing: 5; visible: hpxWindow.viewMode === "locality"; Label { color: hpxWindow.recvColor; font.bold: true; text: "\u25C6" } Label { color: "white"; text: "HPX saw the header of a large message" } }
             Label { color: hpxWindow.mpiColor; font.bold: true; text: "→ data (blue frame = MPI)"; visible: hpxWindow.viewMode === "locality" }
             Row { spacing: 5; visible: hpxWindow.stripH > 0; Rectangle { width: 20; height: 10; color: "#33bf8c"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: hpxWindow.perThread ? "tasks on the worker threads of every locality (one row per thread, colour = name of the task)" : "worker threads busy (strip on top of every locality)" } }
+            Row { spacing: 5; visible: hpxWindow.stripH > 0 && hpxWindow.perThread; Rectangle { width: 10; height: 10; radius: 5; color: "#66bb6a"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that sent the parcel" } Rectangle { width: 10; height: 10; radius: 5; color: "#ef5350"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that ran its action" } }
             Label { color: "#ffd600"; font.bold: true; text: "gold = critical path"; visible: hpxWindow.criticalOn && hpxWindow.hasTree }
         }
         Label {
