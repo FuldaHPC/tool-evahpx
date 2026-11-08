@@ -114,6 +114,7 @@ void TaskFile::unload()
     m_rows.clear();
     m_deps.clear();
     m_rowLabels.clear();
+    m_rowLoc.clear();
     m_names.clear();
     m_nameCount.clear();
     m_nameTotal.clear();
@@ -226,6 +227,7 @@ bool TaskFile::load(const QUrl &url)
             ++m_nameCount[s.name];
             m_nameTotal[s.name] += s.t1 - s.t0;
         }
+        m_rowLoc.append(int(kv.first >> 16));
         m_rowLabels.append(QStringLiteral("L%1 w%2").arg(kv.first >> 16).arg(kv.first & 0xFFFF));
         m_sliceCount += int(v.size());
         m_rows.append(std::move(v));
@@ -257,6 +259,48 @@ bool TaskFile::load(const QUrl &url)
     m_error.clear();
     emit changed();
     return true;
+}
+
+bool TaskFile::hasLocality(int loc) const
+{
+    return m_rowLoc.size() == m_rows.size() && m_rowLoc.contains(loc);
+}
+
+QVector<double> TaskFile::utilization(int loc, double a, double b, int bins) const
+{
+    QVector<double> out;
+    if (bins <= 0 || b <= a)
+        return out;
+    int workers = 0;
+    QVector<double> busy(bins, 0.0);
+    const double width = (b - a) / bins;
+    for (int r = 0; r < m_rows.size(); ++r) {
+        if (m_rowLoc[r] != loc)
+            continue;
+        ++workers;
+        const QVector<Slice> &v = m_rows[r];
+        int i = int(std::lower_bound(v.begin(), v.end(), a, [](const Slice &s, double t) { return s.t0 < t; }) - v.begin());
+        i = std::max(0, i - 64);
+        double covered = a;                    // nested slices (a task that runs another one) count once
+        for (; i < v.size() && v[i].t0 < b; ++i) {
+            const double t0 = std::max({v[i].t0, covered, a}), t1 = std::min(v[i].t1, b);
+            covered = std::max(covered, v[i].t1);
+            if (t1 <= t0)
+                continue;
+            int k = std::clamp(int((t0 - a) / width), 0, bins - 1);
+            for (double t = t0; t < t1 && k < bins; ++k) {
+                const double e = std::min(t1, a + (k + 1) * width);
+                busy[k] += e - t;
+                t = e;
+            }
+        }
+    }
+    if (workers == 0)
+        return out;
+    out.resize(bins);
+    for (int k = 0; k < bins; ++k)
+        out[k] = std::min(1.0, busy[k] / (width * workers));
+    return out;
 }
 
 QVector<double> TaskFile::spans(int row, double a, double b, double usPerPx) const

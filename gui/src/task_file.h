@@ -42,6 +42,10 @@ public:
     Q_INVOKABLE bool load(const QUrl &file);
     Q_INVOKABLE void unload();
 
+    // How busy the worker threads of one locality are: `bins` values from 0 (all idle) to 1 (all busy), for equal parts of the
+    // window [a, b] (absolute microseconds). Empty if the locality has no task data.
+    Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;
+    Q_INVOKABLE bool hasLocality(int loc) const;
     // The slices of a row in the window [a, b] (absolute microseconds), as one list of numbers, six for every span:
     // start, end, name number (of several merged slices: the name with the most time), count of slices, how much of the
     // span is covered by tasks (0 to 1), and 1 if the span holds more than one name.
@@ -99,6 +103,7 @@ private:
     QStringList m_rowLabels;
     QStringList m_names;
     QVector<QVector<Slice>> m_rows;       // sorted by start time
+    QVector<int> m_rowLoc;                // the locality of every row
     QVector<Dep> m_deps;
     QVector<int> m_nameCount;
     QVector<double> m_nameTotal;

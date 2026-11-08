@@ -70,6 +70,9 @@ ApplicationWindow {
     property int skipped: 0         // parcels without MPI data (not shown)
     property int hoverIndex: -1
     property string viewMode: "locality"   // locality | message | tree | tree3d | threads
+    property bool showCpu: true          // under every locality: how busy its worker threads were (needs the task data of the run)
+    readonly property int stripH: tasks.loaded && showCpu && viewMode === "locality" ? 12 : 0
+    onStripHChanged: lanes.requestPaint()
     readonly property bool threads: viewMode === "threads"      // what the worker threads did (the task data of the run, if there is any)
     readonly property bool treeView: viewMode === "tree" || viewMode === "tree3d"   // the trees need no time breakdown and no colour legend of the lanes
     property var laneInfo: []
@@ -1338,6 +1341,7 @@ ApplicationWindow {
             Button { text: "Tree"; visible: hpxWindow.hasTree; checkable: true; checked: hpxWindow.viewMode === "tree"; onClicked: { hpxWindow.viewMode = "tree"; tree.requestPaint(); } }
             Button { text: "3D tree"; visible: hpxWindow.hasTree; checkable: true; checked: hpxWindow.viewMode === "tree3d"; onClicked: hpxWindow.viewMode = "tree3d" }
             Button { text: "Threads"; checkable: true; checked: hpxWindow.threads; onClicked: hpxWindow.viewMode = "threads" }
+            Button { text: "Threads busy"; visible: tasks.loaded && hpxWindow.viewMode === "locality"; checkable: true; checked: hpxWindow.showCpu; onClicked: hpxWindow.showCpu = checked }
             Button { text: "Reset zoom"; visible: !hpxWindow.threads && hpxWindow.groups.length > 0; onClicked: hpxWindow.select(hpxWindow.current) }
             Button {
                 text: "Critical path"
@@ -1401,14 +1405,15 @@ ApplicationWindow {
                     let sum = 0;
                     for (const l of ls)
                         sum += l.tracks;
-                    const avail = height - topMargin - 6 - ls.length * lanePad;
+                    const pad = lanePad + hpxWindow.stripH;
+                    const avail = height - topMargin - 6 - ls.length * pad;
                     trackH = Math.max(9, Math.min(20, avail / Math.max(sum, 1)));
-                    hpxWindow.contentH = topMargin + 6 + sum * trackH + ls.length * lanePad;
+                    hpxWindow.contentH = topMargin + 6 + sum * trackH + ls.length * pad;
                     hpxWindow.scrollY = Math.max(0, Math.min(hpxWindow.scrollY, Math.max(hpxWindow.contentH - height, 0)));
                     let y = topMargin - hpxWindow.scrollY;
                     for (const l of ls) {
                         l.y0 = y;
-                        l.h = l.tracks * trackH + lanePad;
+                        l.h = l.tracks * trackH + pad;
                         y += l.h;
                     }
                 }
@@ -1420,7 +1425,7 @@ ApplicationWindow {
                 }
                 function yOf(piece) {
                     const l = laneOf(piece.loc);
-                    return l ? l.y0 + lanePad / 2 + piece.track * trackH + trackH / 2 : 0;
+                    return l ? l.y0 + hpxWindow.stripH + lanePad / 2 + piece.track * trackH + trackH / 2 : 0;
                 }
                 // the arrow starts at the end of the MPI send call, but never after the end of the receive
                 // (big messages arrive while the sender is still in the call)
@@ -1467,6 +1472,19 @@ ApplicationWindow {
                         ctx.fillRect(0, l.y0, width, l.h);
                         ctx.fillStyle = "#dddddd";
                         ctx.fillText("L#" + l.loc, 10, l.y0 + Math.min(l.h, 30) / 2 + 4);
+                        if (hpxWindow.stripH > 0) {          // the share of the worker threads of this locality that run a task
+                            const nb = Math.max(1, Math.floor((width - leftMargin - rightMargin) / 3));
+                            const u = tasks.utilization(l.loc, hpxWindow.viewStart, hpxWindow.viewEnd, nb);
+                            const bw = (width - leftMargin - rightMargin) / nb;
+                            ctx.fillStyle = "#1c1c1c";
+                            ctx.fillRect(leftMargin, l.y0 + 2, width - leftMargin - rightMargin, hpxWindow.stripH - 4);
+                            for (let k = 0; k < u.length; ++k) {
+                                if (u[k] <= 0.005)
+                                    continue;
+                                ctx.fillStyle = Qt.rgba(0.2, 0.75, 0.55, 0.25 + 0.75 * u[k]);
+                                ctx.fillRect(leftMargin + k * bw, l.y0 + 2, Math.ceil(bw), hpxWindow.stripH - 4);
+                            }
+                        }
                     });
 
                     // time axis, 0 = start of this group
@@ -2049,6 +2067,7 @@ ApplicationWindow {
             Row { spacing: 5; Rectangle { width: 2; height: 14; color: "white" } Label { color: "white"; text: "send noticed by HPX" } }
             Row { spacing: 5; visible: hpxWindow.viewMode === "locality"; Label { color: hpxWindow.recvColor; font.bold: true; text: "\u25C6" } Label { color: "white"; text: "HPX saw the header of a large message" } }
             Label { color: hpxWindow.mpiColor; font.bold: true; text: "→ data (blue frame = MPI)"; visible: hpxWindow.viewMode === "locality" }
+            Row { spacing: 5; visible: hpxWindow.stripH > 0; Rectangle { width: 20; height: 10; color: "#33bf8c"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "worker threads busy (strip on top of every locality)" } }
             Label { color: "#ffd600"; font.bold: true; text: "gold = critical path"; visible: hpxWindow.criticalOn && hpxWindow.hasTree }
         }
         Label {

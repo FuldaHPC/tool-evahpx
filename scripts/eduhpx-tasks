@@ -81,6 +81,8 @@ def main():
         node = nodes.get(loc) or (node_of_rank(run_dir, loc) if run_dir else None)
         off = offsets.get(node, 0.0) if node else 0.0
         wall = lambda t: log.wall_us(t) + off  # noqa: E731
+        # task numbers are unique within a process only: the locality goes into the upper bits (the thread index of the log takes bits 40-51)
+        gid = lambda x: (x | (loc << 52)) if x else 0  # noqa: E731
         recs = sorted(log.records, key=lambda r: r[4])    # in time order
         created = {}                                      # task -> (time, parent, name)
         last_fulfilled = {}                               # future -> (time, task)
@@ -92,9 +94,9 @@ def main():
             elif kind == 6:
                 f = last_fulfilled.get(x)
                 if f is not None and f[1] and y and f[1] != y:
-                    deps.append((loc, f[1], y, f[0], wall(t)))
+                    deps.append((loc, gid(f[1]), gid(y), f[0], wall(t)))
             elif kind == 7:
-                steals.append((loc, worker, y, x, wall(t)))
+                steals.append((loc, worker, y, gid(x), wall(t)))
         seen = set()
         for kind, flag, worker, nid, t, x, y in recs:
             if kind != 1:
@@ -103,7 +105,7 @@ def main():
             if t1 - t0 < a.min_us:
                 continue
             c = created.get(x)
-            rows.append((loc, worker, x, log.name(nid), t0, t1, tl.ENDS.get(flag, "?"), c[1] if c else 0, c[0] if c else None))
+            rows.append((loc, worker, gid(x), log.name(nid), t0, t1, tl.ENDS.get(flag, "?"), gid(c[1]) if c else 0, c[0] if c else None))
             workers.setdefault(loc, set()).add(worker)
             seen.add(x)
             n_slices += 1
