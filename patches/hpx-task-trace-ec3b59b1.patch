@@ -398,7 +398,7 @@ index db64806..8366c94 100644
                          std::remove_pointer_t<decltype(thrd_data)>;
                      work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..dac2685 100644
+index 1b39ce6..1c6837e 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
 @@ -24,6 +24,21 @@
@@ -423,7 +423,7 @@ index 1b39ce6..dac2685 100644
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +774,637 @@ namespace hpx::tracing {
+@@ -759,4 +774,660 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -469,7 +469,11 @@ index 1b39ce6..dac2685 100644
 +            k_resumed = 4,
 +            k_fulfilled = 5,
 +            k_continuation = 6,
-+            k_stolen = 7
++            k_stolen = 7,
++            k_parcel_begin = 8,      // a = msb and b = lsb of the id of a parcel: its action starts to run on this worker (name = the action)
++            k_parcel_end = 9,        // the same parcel: the action is done
++            k_parcel_sent = 10,      // a = msb, b = lsb: the running task sends this parcel from this worker
++            k_parcel_sender = 11     // a = lsb of the parcel of the record before, b = number of the task that sends it (0: none)
 +        };
 +
 +        struct task_rec
@@ -993,6 +997,25 @@ index 1b39ce6..dac2685 100644
 +        return tls().running();
 +    }
 +
++    HPX_CORE_EXPORT void task_log_parcel_exec(bool begin, std::uint64_t msb, std::uint64_t lsb, char const* action) noexcept;
++    HPX_CORE_EXPORT void task_log_parcel_sent(std::uint64_t msb, std::uint64_t lsb) noexcept;
++
++    void task_log_parcel_exec(bool begin, std::uint64_t msb, std::uint64_t lsb, char const* action) noexcept
++    {
++        task_tls& s = tls();
++        bool skip = false;
++        std::uint32_t const id = begin && action != nullptr ? s.intern(action, skip) : 0;
++        s.push({begin ? k_parcel_begin : k_parcel_end, 0, s.worker, id, task_ticks(), msb, lsb});
++    }
++
++    void task_log_parcel_sent(std::uint64_t msb, std::uint64_t lsb) noexcept
++    {
++        task_tls& s = tls();
++        std::uint64_t const now = task_ticks();
++        s.push({k_parcel_sent, 0, s.worker, 0, now, msb, lsb});
++        s.push({k_parcel_sender, 0, s.worker, 0, now, lsb, s.running()});
++    }
++
 +    void task_log_created(std::uint64_t serial, std::uint64_t parent, char const* name, std::size_t addr) noexcept
 +    {
 +        task_tls& s = tls();
@@ -1076,3 +1099,71 @@ index be7a586..14cbaa9 100644
          }
      };
  
+diff --git a/libs/full/parcelset/src/parcel.cpp b/libs/full/parcelset/src/parcel.cpp
+index 2466c36..ef83254 100644
+--- a/libs/full/parcelset/src/parcel.cpp
++++ b/libs/full/parcelset/src/parcel.cpp
+@@ -35,6 +35,13 @@
+ #include <utility>
+ 
+ ///////////////////////////////////////////////////////////////////////////////
++namespace hpx::tracing::detail {
++    // the parcels of the task log (see tracy.cpp): a parcel is sent by a task on a worker thread, and its action is run (a direct
++    // action: right away) on a worker thread of the receiving locality
++    HPX_CORE_EXPORT void task_log_parcel_exec(bool begin, std::uint64_t msb, std::uint64_t lsb, char const* action) noexcept;
++    HPX_CORE_EXPORT void task_log_parcel_sent(std::uint64_t msb, std::uint64_t lsb) noexcept;
++}    // namespace hpx::tracing::detail
++
+ namespace hpx::parcelset::detail {
+ 
+     parcel_data::parcel_data()
+@@ -485,8 +492,13 @@ namespace hpx::parcelset::detail {
+             std::uint64_t const id_msb = data_.parcel_id_.get_msb();
+             std::uint64_t const id_lsb = data_.parcel_id_.get_lsb();
+ #endif
++            bool const logged = hpx::tracing::detail::task_log_on();
++            if (logged)
++                hpx::tracing::detail::task_log_parcel_exec(true, id_msb, id_lsb, get_action_name());
+             action_->load_schedule(ar, HPX_MOVE(data_.dest_), p.first, p.second,
+                 num_thread, deferred_schedule);
++            if (logged)
++                hpx::tracing::detail::task_log_parcel_exec(false, id_msb, id_lsb, nullptr);
+ #if defined(HPX_HAVE_PARCEL_PROFILING)
+             hpx::tracing::detail::parcel_done_impl(id_msb, id_lsb);
+ #endif
+diff --git a/libs/full/parcelset/src/parcelhandler.cpp b/libs/full/parcelset/src/parcelhandler.cpp
+index 1176626..5a4163d 100644
+--- a/libs/full/parcelset/src/parcelhandler.cpp
++++ b/libs/full/parcelset/src/parcelhandler.cpp
+@@ -66,6 +66,13 @@ namespace hpx::detail {
+ }    // namespace hpx::detail
+ 
+ ///////////////////////////////////////////////////////////////////////////////
++namespace hpx::tracing::detail {
++    // the parcels of the task log (see tracy.cpp): a parcel is sent by a task on a worker thread, and its action is run (a direct
++    // action: right away) on a worker thread of the receiving locality
++    HPX_CORE_EXPORT void task_log_parcel_exec(bool begin, std::uint64_t msb, std::uint64_t lsb, char const* action) noexcept;
++    HPX_CORE_EXPORT void task_log_parcel_sent(std::uint64_t msb, std::uint64_t lsb) noexcept;
++}    // namespace hpx::tracing::detail
++
+ namespace hpx::parcelset {
+ 
+     namespace {
+@@ -834,6 +841,8 @@ namespace hpx::parcelset {
+ #if defined(HPX_HAVE_PARCEL_PROFILING)
+         hpx::tracing::detail::parcel_created_impl(p.parcel_id().get_msb(), p.parcel_id().get_lsb(),
+             p.get_action_name(), reinterpret_cast<std::uint64_t>(p.get_parent_thread_id().get()));
++        if (hpx::tracing::detail::task_log_on())
++            hpx::tracing::detail::task_log_parcel_sent(p.parcel_id().get_msb(), p.parcel_id().get_lsb());
+ #endif
+ 
+         bool resolved_locally = true;
+@@ -1048,6 +1057,8 @@ namespace hpx::parcelset {
+ #if defined(HPX_HAVE_PARCEL_PROFILING)
+             hpx::tracing::detail::parcel_created_impl(p.parcel_id().get_msb(), p.parcel_id().get_lsb(),
+                 p.get_action_name(), reinterpret_cast<std::uint64_t>(p.get_parent_thread_id().get()));
++        if (hpx::tracing::detail::task_log_on())
++            hpx::tracing::detail::task_log_parcel_sent(p.parcel_id().get_msb(), p.parcel_id().get_lsb());
+ #endif
+ 
+             bool resolved_locally = true;

@@ -211,13 +211,13 @@ Item {
                 const ev = cw >= 12 ? 1 : Math.ceil(12 / cw);
                 ctx.textAlign = "right";
                 for (let i = 0; i < w; i += ev)
-                    ctx.fillText("w" + root.detail.workers[i], x0 + lm - 5, root.topM + i * cw + cw / 2 + 3.5);
+                    ctx.fillText((root.detail.workers[i] === 65535 ? "other" : "w" + root.detail.workers[i]), x0 + lm - 5, root.topM + i * cw + cw / 2 + 3.5);
                 ctx.textAlign = "left";
                 for (let j = 0; j < w; j += ev) {
                     ctx.save();
                     ctx.translate(x0 + lm + j * cw + cw / 2, root.topM - 5);
                     ctx.rotate(-Math.PI / 2);
-                    ctx.fillText("w" + root.detail.workers[j], 0, 3.5);
+                    ctx.fillText((root.detail.workers[j] === 65535 ? "other" : "w" + root.detail.workers[j]), 0, 3.5);
                     ctx.restore();
                 }
             }

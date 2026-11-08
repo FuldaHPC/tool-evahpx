@@ -1,6 +1,7 @@
 #ifndef EDUHPX_TASK_FILE_H
 #define EDUHPX_TASK_FILE_H
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -59,6 +60,9 @@ public:
     // window [a, b] (absolute microseconds). Empty if the locality has no task data.
     Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;
     Q_INVOKABLE bool hasLocality(int loc) const;
+    // The worker threads of a parcel (its id as in the run file): [row of the sender's thread, row of the thread that ran its action],
+    // -1 where it is not known (see spans() for the rows; the task data must have been recorded with parcels)
+    Q_INVOKABLE QVector<int> parcelRows(const QString &id) const;
     // The rows (see spans()) of the worker threads of a locality, in the order of the thread numbers
     Q_INVOKABLE QVector<int> rowsOf(int loc) const;
     // The slices of a row in the window [a, b] (absolute microseconds), as one list of numbers, six for every span:
@@ -135,6 +139,12 @@ private:
     void buildHandovers() const;
     mutable QVector<Hand> m_hands;
     mutable bool m_handsBuilt = false;
+    struct ParcelEnds
+    {
+        qint32 sendLoc = -1, sendWorker = -1, recvLoc = -1, recvWorker = -1;
+    };
+    QHash<QByteArray, ParcelEnds> m_parcels;
+    QHash<quint32, int> m_rowIndex;       // (locality << 16 | worker) -> row
     QVector<int> m_rowWorker;
     QVector<int> m_rowLoc;                // the locality of every row
     QVector<Dep> m_deps;

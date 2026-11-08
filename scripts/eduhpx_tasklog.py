@@ -9,7 +9,8 @@ import collections
 import struct
 import sys
 
-KINDS = {1: "slice", 2: "created", 3: "suspend", 4: "resumed", 5: "fulfilled", 6: "continuation", 7: "stolen"}
+KINDS = {1: "slice", 2: "created", 3: "suspend", 4: "resumed", 5: "fulfilled", 6: "continuation", 7: "stolen",
+         8: "parcel_begin", 9: "parcel_end", 10: "parcel_sent", 11: "parcel_sender"}
 ENDS = {0: "finished", 1: "yielded", 2: "suspended"}
 _HEADER = struct.Struct("<8sIIiiQQQQQ")
 _REC = struct.Struct("<BBHIQQQ")

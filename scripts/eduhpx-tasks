@@ -72,7 +72,7 @@ def main():
         offsets = read_offsets(os.path.join(run_dir, "clock_offsets.csv"))
     nodes = dict((int(k), v) for k, v in (x.split("=") for x in a.nodes.split(",") if "=" in x))
 
-    rows, deps, steals = [], [], []
+    rows, deps, steals, parcels = [], [], [], []      # parcels: (loc, worker, 'send'/'recv', task, name, t0, t1, parcel id)
     n_tasks = n_slices = 0
     workers = {}
     for path in paths:
@@ -97,6 +97,24 @@ def main():
                     deps.append((loc, gid(f[1]), gid(y), f[0], wall(t)))
             elif kind == 7:
                 steals.append((loc, worker, y, gid(x), wall(t)))
+        # parcels: an action that runs right away on the receiving worker (a direct action), and the task that sends a parcel
+        begun, sent = {}, {}
+        n_direct = 0
+        for kind, flag, worker, nid, t, x, y in recs:
+            if kind == 8:
+                begun[(x, y)] = (wall(t), worker, nid)
+            elif kind == 9 and (x, y) in begun:
+                t0, wk, nm = begun.pop((x, y))
+                n_direct += 1
+                task = (1 << 51) | n_direct                       # no number from HPX: it is no task, make one
+                rows.append((loc, wk, gid(task), log.name(nm), t0, wall(t), "finished", 0, None))
+                parcels.append((loc, wk, "recv", gid(task), log.name(nm), t0, wall(t), "%016x:%016x" % (x, y)))
+                n_slices += 1
+            elif kind == 10:
+                sent[y] = (wall(t), worker, x)
+            elif kind == 11 and x in sent:
+                t0, wk, msb = sent.pop(x)
+                parcels.append((loc, wk, "send", gid(y), "", t0, "", "%016x:%016x" % (msb, x)))
         seen = set()
         for kind, flag, worker, nid, t, x, y in recs:
             if kind != 1:
@@ -126,8 +144,10 @@ def main():
             w.writerow(["dep", loc, "", frm, "", us(t0), us(t1), "", "", "", to])
         for loc, thief, victim, task, t in steals:
             w.writerow(["steal", loc, thief, task, "", us(t), "", "", "", "", victim])
-    print("eduhpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals" % (
-        out, len(workers), n_tasks, n_slices, len(deps), len(steals)))
+        for loc, wk, what, task, nm, t0, t1, pid in parcels:      # which thread sent / ran the action of which parcel (the id as in run.csv)
+            w.writerow([what, loc, wk, task or "", nm, us(t0), us(t1) if t1 != "" else "", "", "", "", pid])
+    print("eduhpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals, %d parcel records" % (
+        out, len(workers), n_tasks, n_slices, len(deps), len(steals), len(parcels)))
 
 
 if __name__ == "__main__":

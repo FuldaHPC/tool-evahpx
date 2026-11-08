@@ -118,6 +118,8 @@ void TaskFile::unload()
     m_deps.clear();
     m_rowLabels.clear();
     m_rowLoc.clear();
+    m_parcels.clear();
+    m_rowIndex.clear();
     m_rowWorker.clear();
     m_hands.clear();
     m_handsBuilt = false;
@@ -216,6 +218,15 @@ bool TaskFile::load(const QUrl &url)
             locs.insert(loc);
             tmin = std::min(tmin, s.t0);
             tmax = std::max(tmax, s.t1);
+        } else if (qstrcmp(kind, "send") == 0 || qstrcmp(kind, "recv") == 0) {      // which thread sent a parcel / ran its action
+            ParcelEnds &e = m_parcels[QByteArray(field(10))];
+            if (kind[0] == 's') {
+                e.sendLoc = std::atoi(field(1));
+                e.sendWorker = std::atoi(field(2));
+            } else {
+                e.recvLoc = std::atoi(field(1));
+                e.recvWorker = std::atoi(field(2));
+            }
         } else if (qstrcmp(kind, "dep") == 0) {
             rawDeps.append({std::strtoull(field(3), nullptr, 10), std::strtoull(field(10), nullptr, 10),
                             std::strtod(field(5), nullptr), std::strtod(field(6), nullptr)});
@@ -259,9 +270,12 @@ bool TaskFile::load(const QUrl &url)
                 ++m_internalSlices;
             m_nameTotal[s.name] += s.t1 - s.t0;
         }
+        m_rowIndex.insert(kv.first, m_rows.size());
         m_rowLoc.append(int(kv.first >> 16));
         m_rowWorker.append(int(kv.first & 0xFFFF));
-        m_rowLabels.append(QStringLiteral("L%1 w%2").arg(kv.first >> 16).arg(kv.first & 0xFFFF));
+        // worker 65535: a thread that is no worker of HPX (the parcel is handled there, for example by the thread of the MPI progress)
+        m_rowLabels.append((kv.first & 0xFFFF) == 0xFFFF ? QStringLiteral("L%1 other").arg(kv.first >> 16)
+                                                         : QStringLiteral("L%1 w%2").arg(kv.first >> 16).arg(kv.first & 0xFFFF));
         m_sliceCount += int(v.size());
         m_rows.append(std::move(v));
     }
@@ -501,6 +515,19 @@ QVariantMap TaskFile::criticalChain() const
     out["end"] = lastEnd;
     out["byName"] = top;
     out["slices"] = QVariant::fromValue(slices);
+    return out;
+}
+
+QVector<int> TaskFile::parcelRows(const QString &id) const
+{
+    QVector<int> out{-1, -1};
+    const auto it = m_parcels.constFind(id.toLatin1());
+    if (it == m_parcels.constEnd())
+        return out;
+    if (it->sendLoc >= 0)
+        out[0] = m_rowIndex.value((quint32(it->sendLoc) << 16) | quint32(it->sendWorker & 0xFFFF), -1);
+    if (it->recvLoc >= 0)
+        out[1] = m_rowIndex.value((quint32(it->recvLoc) << 16) | quint32(it->recvWorker & 0xFFFF), -1);
     return out;
 }
 

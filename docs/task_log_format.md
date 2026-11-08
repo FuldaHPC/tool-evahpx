@@ -43,8 +43,14 @@ Record (32 bytes): `u8 kind, u8 flag, u16 worker, u32 name, u64 t, u64 a, u64 b`
 | 5 | fulfilled | time | id of the future | number of the task that was running (0: none) | | |
 | 6 | continuation | time | id of the future whose value the continuation uses | task that was running | | |
 | 7 | stolen | time | task number | victim worker | | |
+| 8 | parcel_begin | time | most significant half of the parcel id | least significant half | | the action |
+| 9 | parcel_end | time | same parcel | | | |
+| 10 | parcel_sent | time | most significant half of the parcel id | least significant half | | |
+| 11 | parcel_sender | time | least significant half of the parcel of the record before | number of the task that sends it (0: none) | | |
 
 The *parent* of a task is the task that was running when the task was handed to HPX (`async`, `dataflow`, ...). A task is staged first and made later by the scheduler, so the patch takes the number of the running task when the task is staged and carries it along (built with `HPX_WITH_THREAD_PARENT_REFERENCE`, which `HPX_WITH_TASK_TRACE_NAMES` switches on). For a `dataflow` this is the task that fulfilled the last input.
+
+*parcel_begin* and *parcel_end* enclose the time in which the action of a received parcel is started on this worker thread: for a direct action (the collectives use them) it is run right there, for any other action only the task is scheduled. *parcel_sent* and *parcel_sender* tell which task on which worker thread sent a parcel. Worker 65535 is a thread that is no worker of HPX. The id is the one of the parcel log (`%016x:%016x`, as in `run.csv`).
 
 `worker` is the worker thread (for *stolen*: the thief). A task that suspends and resumes has one *slice* for every time it ran. A task can run another one inside (then the slices are nested). The **number of a task** is unique for the whole run: the index of the OS thread that created it in the upper bits, a counter of that thread below (HPX reuses its task objects, so their addresses are not unique). The id of a future is the address of its shared state: a *continuation* belongs to the latest earlier *fulfilled* with the same id, and shows which task handed a value to which.
 

@@ -393,7 +393,7 @@ ApplicationWindow {
             // otherwise the start of the send call (the receive cannot complete earlier)
             const rd = m.mpi_irecv_us !== undefined ? m.mpi_irecv_us : 0;
             const rs = Math.min(rd > 0 ? Math.max(t1 - rd, t0s) : t0s, t1);
-            const row = {src: m.src, dst: m.dst, size: m.size, tc: tc, t0s: t0s, t0: t0, t1: t1, tr: tr, td: td, ts: ts, rq: rq, rs: rs,
+            const row = {id: m.id, src: m.src, dst: m.dst, size: m.size, tc: tc, t0s: t0s, t0: t0, t1: t1, tr: tr, td: td, ts: ts, rq: rq, rs: rs,
                          action: m.action || "", chunk: chunk, exact: tdone >= 0, tw: -1};
             const kind = m.group_kind !== undefined ? m.group_kind : "burst";
             const idx = m.group !== undefined ? m.group : 1;
@@ -1449,6 +1449,31 @@ ApplicationWindow {
                     const l = laneOf(piece.loc);
                     return l ? l.y0 + l.strip + lanePad / 2 + piece.track * trackH + trackH / 2 : 0;
                 }
+                // with the threads shown, the arrows start in the row of the thread that sent the parcel and end in the row of the
+                // thread that ran its action (when the task data know them), else at the work of the locality
+                function threadY(loc, row) {
+                    const l = laneOf(loc);
+                    if (!l || row < 0 || !hpxWindow.perThread || hpxWindow.stripH === 0)
+                        return -1;
+                    const k = tasks.rowsOf(loc).indexOf(row);
+                    return k < 0 ? -1 : l.y0 + 3 + k * hpxWindow.threadRowH + hpxWindow.threadRowH / 2;
+                }
+                function yFrom(m) {
+                    if (hpxWindow.perThread && hpxWindow.stripH > 0 && m.row.id) {
+                        const y = threadY(m.row.src, tasks.parcelRows(m.row.id)[0]);
+                        if (y >= 0)
+                            return y;
+                    }
+                    return yOf(m.pre);
+                }
+                function yTo(m) {
+                    if (hpxWindow.perThread && hpxWindow.stripH > 0 && m.row.id) {
+                        const y = threadY(m.row.dst, tasks.parcelRows(m.row.id)[1]);
+                        if (y >= 0)
+                            return y;
+                    }
+                    return yOf(m.rcv);
+                }
                 // the arrow starts at the end of the MPI send call, but never after the end of the receive
                 // (big messages arrive while the sender is still in the call)
                 function arrowStart(r) {
@@ -1595,7 +1620,7 @@ ApplicationWindow {
                         const m = msgs[i], r = m.row;
                         if (crit && r.crit)
                             continue;                                          // the critical path is drawn last, on top
-                        arrow(ctx, xOf(arrowStart(r)), yOf(m.pre), xOf(r.t1), yOf(m.rcv), dense ? 0.9 : 1.3,
+                        arrow(ctx, xOf(arrowStart(r)), yFrom(m), xOf(r.t1), yTo(m), dense ? 0.9 : 1.3,
                               crit ? "rgba(240,240,240,0.28)" : (dense ? "rgba(240,240,240,0.55)" : "rgba(255,255,255,0.95)"), true);
                     }
                     if (crit) {
@@ -1603,7 +1628,7 @@ ApplicationWindow {
                             const m = msgs[i], r = m.row;
                             if (!r.crit || i === hot)
                                 continue;
-                            arrow(ctx, xOf(arrowStart(r)), yOf(m.pre), xOf(r.t1), yOf(m.rcv), 3, "#ffd600", true);
+                            arrow(ctx, xOf(arrowStart(r)), yFrom(m), xOf(r.t1), yTo(m), 3, "#ffd600", true);
                             ctx.strokeStyle = "#ffd600"; ctx.lineWidth = 2;
                             ctx.strokeRect(xOf(m.pre.a), yOf(m.pre) - bh / 2, Math.max(xOf(m.pre.b) - xOf(m.pre.a), 2), bh);
                             ctx.strokeRect(xOf(m.rcv.a), yOf(m.rcv) - bh / 2, Math.max(xOf(m.rcv.b) - xOf(m.rcv.a), 3), bh);
@@ -1611,7 +1636,7 @@ ApplicationWindow {
                     }
                     if (hot >= 0 && hot < msgs.length) {
                         const m = msgs[hot], r = m.row;
-                        arrow(ctx, xOf(arrowStart(r)), yOf(m.pre), xOf(r.t1), yOf(m.rcv), 2.2, "#ff4081", true);
+                        arrow(ctx, xOf(arrowStart(r)), yFrom(m), xOf(r.t1), yTo(m), 2.2, "#ff4081", true);
                         ctx.strokeStyle = "#ff4081"; ctx.lineWidth = 1.5;
                         ctx.strokeRect(xOf(m.pre.a), yOf(m.pre) - bh / 2, Math.max(xOf(m.pre.b) - xOf(m.pre.a), 2), bh);
                         ctx.strokeRect(xOf(m.rcv.a), yOf(m.rcv) - bh / 2, Math.max(xOf(m.rcv.b) - xOf(m.rcv.a), 3), bh);
@@ -1677,7 +1702,7 @@ ApplicationWindow {
                         hpxWindow.laneMsgs.forEach((m, i) => {
                             const r = m.row;
                             let d = hpxWindow.arrowShown(r)
-                                ? distToSegment(e.x, e.y, lanes.xOf(lanes.arrowStart(r)), lanes.yOf(m.pre), lanes.xOf(r.t1), lanes.yOf(m.rcv)) : 1e9;
+                                ? distToSegment(e.x, e.y, lanes.xOf(lanes.arrowStart(r)), lanes.yFrom(m), lanes.xOf(r.t1), lanes.yTo(m)) : 1e9;
                             if (Math.abs(e.y - lanes.yOf(m.pre)) <= th && e.x >= lanes.xOf(m.pre.a) - 2 && e.x <= lanes.xOf(m.pre.b) + 2)
                                 d = 0;
                             if (Math.abs(e.y - lanes.yOf(m.rcv)) <= th && e.x >= lanes.xOf(m.rcv.a) - 3 && e.x <= lanes.xOf(m.rcv.b) + 3)
