@@ -340,7 +340,7 @@ Item {
                     const wait = s.created >= 0 ? "\nwaited " + root.fmt(Math.max(0, s.t0 - s.created)) + " after it was created" : "";
                     return s.name + "\nruns " + root.fmt(s.t1 - s.t0) + ", ends: " + s.end + "\nat +" + root.fmt(s.t0 - root.file.tmin)
                         + wait + (s.parent ? "\nmade by " + (root.file.nameOfTask(s.parent) || "?") : "")
-                        + "\n(click: its parent and children)";
+                        + (s.parent ? "\n(click: its parent and children)" : "");
                 }
                 if (root.selTask === "" || root.selSlices.length === 0)
                     return "";
