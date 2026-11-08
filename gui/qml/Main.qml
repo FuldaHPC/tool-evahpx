@@ -2147,6 +2147,15 @@ ApplicationWindow {
             Row { spacing: 5; visible: hpxWindow.viewMode === "locality"; Label { color: hpxWindow.recvColor; font.bold: true; text: "\u25C6" } Label { color: "white"; text: "HPX saw the header of a large message" } }
             Label { color: hpxWindow.mpiColor; font.bold: true; text: "→ data (blue frame = MPI)"; visible: hpxWindow.viewMode === "locality" }
             Row { spacing: 5; visible: hpxWindow.stripH > 0; Rectangle { width: 20; height: 10; color: "#33bf8c"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: hpxWindow.perThread ? "tasks on the worker threads of every locality (one row per thread, colour = name of the task)" : "worker threads busy (strip on top of every locality)" } }
+            Repeater {                         // the colours of the thread rows: the tasks with the most time
+                model: hpxWindow.stripH > 0 && hpxWindow.perThread ? tasks.topNames(6) : []
+                delegate: Row {
+                    required property var modelData
+                    spacing: 5
+                    Rectangle { width: 14; height: 10; radius: 2; color: hpxWindow.taskColor(modelData.index); anchors.verticalCenter: parent.verticalCenter }
+                    Label { color: "white"; text: modelData.name.length > 42 ? modelData.name.substring(0, 40) + "..." : modelData.name }
+                }
+            }
             Row { spacing: 5; visible: hpxWindow.stripH > 0 && hpxWindow.perThread; Rectangle { width: 10; height: 10; radius: 5; color: "#66bb6a"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that sent the parcel" } Rectangle { width: 10; height: 10; radius: 5; color: "#ef5350"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that ran its action" } }
             Label { color: "#ffd600"; font.bold: true; text: "gold = critical path"; visible: hpxWindow.criticalOn && hpxWindow.hasTree }
         }

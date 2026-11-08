@@ -241,7 +241,7 @@ bool TaskFile::load(const QUrl &url)
     for (int i = 0; i < m_names.size(); ++i) {
         // tasks that HPX runs for itself: timers, AGAS (the namespaces), loading of components, start and stop, the stack switch
         static const char *const marks[] = {"timer", "namespace", "shutdown", "load_components", "pre_main", "run_helper",
-                                            "trace_on_new_stack", "background", "agas", "hpx::"};
+                                            "trace_on_new_stack", "background", "agas"};
         const QString n = m_names[i].toLower();
         for (const char *m : marks)
             if (n.contains(QLatin1String(m)))
