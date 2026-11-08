@@ -767,3 +767,18 @@ index 1b39ce6..f33d334 100644
 +}    // namespace hpx::tracing::detail
 +
  #endif
+diff --git a/libs/full/async_distributed/include/hpx/async_distributed/detail/async_implementations.hpp b/libs/full/async_distributed/include/hpx/async_distributed/detail/async_implementations.hpp
+index be7a586..14cbaa9 100644
+--- a/libs/full/async_distributed/include/hpx/async_distributed/detail/async_implementations.hpp
++++ b/libs/full/async_distributed/include/hpx/async_distributed/detail/async_implementations.hpp
+@@ -403,7 +403,9 @@ namespace hpx::traits {
+         static constexpr std::size_t call(
+             hpx::detail::action_invoker<Action> const&) noexcept
+         {
+-            return reinterpret_cast<std::size_t>(&Action::invoker);
++            // EduHPX: invoker is a template, its address cannot be taken here (HPX_HAVE_THREAD_DESCRIPTION_FULL);
++            // the name of the action is given by get_function_annotation below, this address is not used
++            return 0;
+         }
+     };
+ 
