@@ -320,7 +320,7 @@ index db64806..e01e7e7 100644
                          std::remove_pointer_t<decltype(thrd_data)>;
                      work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..d366a05 100644
+index 1b39ce6..0c88fc0 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
 @@ -24,6 +24,21 @@
@@ -345,7 +345,7 @@ index 1b39ce6..d366a05 100644
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +774,624 @@ namespace hpx::tracing {
+@@ -759,4 +774,626 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -909,8 +909,10 @@ index 1b39ce6..d366a05 100644
 +        task_tls& s = tls();
 +        bool skip = false;
 +        std::uint32_t const id = s.name_of(name, addr, skip);
++        // HPX tells the parent only if it was built with HPX_WITH_THREAD_DEBUG_INFO; the parent is the task that is running
++        // on this thread now (it called async, dataflow, ...), and the recorder knows that one
 +        if (!skip)
-+            s.push({k_created, 0, s.worker, id, task_ticks(), serial, parent});
++            s.push({k_created, 0, s.worker, id, task_ticks(), serial, parent != 0 ? parent : s.running()});
 +    }
 +
 +    void task_log_executing(std::uint64_t serial, char const* name, std::size_t addr, std::size_t worker) noexcept

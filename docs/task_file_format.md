@@ -11,7 +11,7 @@ A text file, UTF-8, made by `scripts/eduhpx-tasks` from the task logs of HPX ([t
 | `name` | what the task is: the name of an action or of a function given a name with `hpx::annotated_function`, a function name, or `<unnamed task>` for a lambda |
 | `t0`, `t1` | start and end |
 | `end` | how a slice ended: `finished`, `yielded` or `suspended` |
-| `parent` | number of the task that created this task (empty: none) |
+| `parent` | number of the task that created this task (empty: none or not known: HPX only tells it when it is built with `HPX_WITH_THREAD_PARENT_REFERENCE`) |
 | `created` | when the task was created |
 | `peer` | `dep`: the task that used the value; `steal`: the worker the task was taken from |
 
