@@ -291,6 +291,11 @@ ApplicationWindow {
         if (runUrl.toString() === "")
             viewMode = "threads";               // only task data: nothing else to show
     }
+    // for the tests: the switches of the thread view
+    function setThreadOptions(chain, internal) {
+        threadView.showChain = chain;
+        threadView.showInternal = internal;
+    }
     // for the tests: the part of the task view that is shown, in milliseconds after the start of the run
     function showThreadWindow(fromMs, toMs) {
         threadView.viewA = tasks.tmin + fromMs * 1000;

@@ -30,6 +30,8 @@ class TaskFile : public QObject
     Q_PROPERTY(int taskCount READ taskCount NOTIFY changed)
     Q_PROPERTY(int sliceCount READ sliceCount NOTIFY changed)
     Q_PROPERTY(int localities READ localities NOTIFY changed)
+    Q_PROPERTY(bool hideInternal READ hideInternal WRITE setHideInternal NOTIFY filterChanged)   // leave out the tasks of HPX itself (timers, AGAS, start and stop)
+    Q_PROPERTY(int internalCount READ internalCount NOTIFY changed)                            // how many slices of them there are
 
 public:
     explicit TaskFile(QObject *parent = nullptr);
@@ -42,6 +44,11 @@ public:
     Q_INVOKABLE bool load(const QUrl &file);
     Q_INVOKABLE void unload();
 
+    // The chain of tasks that decided how long the run took: from the task that ended last, back along "made by"
+    // (for a dataflow that is the task that finished its last input) to the first one. A map: count (tasks), spanUs (from the
+    // start of the first to the end of the last), runUs (time one of them was running), byName [{name, us}] and slices, a flat list
+    // of row, start, end for every slice of the chain. Empty if there is no parent information.
+    Q_INVOKABLE QVariantMap criticalChain() const;
     // How busy the worker threads of one locality are: `bins` values from 0 (all idle) to 1 (all busy), for equal parts of the
     // window [a, b] (absolute microseconds). Empty if the locality has no task data.
     Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;
@@ -65,6 +72,9 @@ public:
     // [fromRow, toRow, tFrom, tTo] ... as far as both tasks have a slice there; at most limit
     Q_INVOKABLE QVector<double> dependencies(double a, double b, int limit) const;
 
+    bool hideInternal() const { return m_hideInternal; }
+    void setHideInternal(bool hide);
+    int internalCount() const { return m_internalSlices; }
     bool loaded() const { return m_loaded; }
     QString name() const { return m_name; }
     QString error() const { return m_error; }
@@ -78,6 +88,7 @@ public:
 
 signals:
     void changed();
+    void filterChanged();
 
 private:
     struct Slice
@@ -87,6 +98,7 @@ private:
         double created;       // -1: unknown
         qint32 name;
         quint8 end;           // 0 finished, 1 yielded, 2 suspended
+        float excl = 0;       // microseconds in which this slice ran itself (not the tasks that ran inside it)
     };
     struct Dep
     {
@@ -94,6 +106,7 @@ private:
         double tFrom, tTo;
         qint32 fromRow, toRow;
     };
+    bool skipped(const Slice &s) const { return m_hideInternal && s.name >= 0 && s.name < m_nameInternal.size() && m_nameInternal[s.name]; }
     void fail(const QString &message);
     int rowOfTask(quint64 task, int *index) const;    // row and index of the first slice of a task, -1 if none
 
@@ -103,6 +116,9 @@ private:
     QStringList m_rowLabels;
     QStringList m_names;
     QVector<QVector<Slice>> m_rows;       // sorted by start time
+    bool m_hideInternal = true;
+    QVector<char> m_nameInternal;         // per name: a task of HPX itself
+    int m_internalSlices = 0;
     QVector<int> m_rowLoc;                // the locality of every row
     QVector<Dep> m_deps;
     QVector<int> m_nameCount;

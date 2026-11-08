@@ -61,6 +61,11 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
                 std::printf("SCROLL step %d scrollY=%f contentH=%f\n", i, root->property("scrollY").toDouble(), root->property("contentH").toDouble());
             }
         }
+        if (!qEnvironmentVariable("EDUHPX_THREAD_OPTS").isEmpty()) {       // test: switches of the thread view, e.g. "chain,internal"
+            const QString o = qEnvironmentVariable("EDUHPX_THREAD_OPTS");
+            QMetaObject::invokeMethod(root, "setThreadOptions", Q_ARG(QVariant, o.contains(QLatin1String("chain"))), Q_ARG(QVariant, o.contains(QLatin1String("internal"))));
+            wait(400);
+        }
         if (!qEnvironmentVariable("EDUHPX_THREAD_WINDOW").isEmpty()) {     // test: the part of the task view that is shown, "from,to" in ms
             const QStringList w = qEnvironmentVariable("EDUHPX_THREAD_WINDOW").split(QLatin1Char(','));
             if (w.size() == 2) {

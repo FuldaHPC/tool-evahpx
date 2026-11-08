@@ -14,6 +14,9 @@ Item {
     property real viewB: file ? file.tmax : 1
     property real scrollY: 0
     property var legend: file && file.loaded ? file.topNames(10) : []
+    property bool showChain: false        // the chain of tasks that decided how long the run took
+    property var chain: ({})
+    property bool showInternal: false     // the tasks of HPX itself (timers, AGAS, start and stop)
     property string selTask: ""
     property var selSlices: []
     property var selRel: ({})
@@ -23,7 +26,7 @@ Item {
 
     readonly property int labelW: 70
     readonly property int axisH: 30
-    readonly property int legendH: 80
+    readonly property int legendH: 104
     readonly property int nRows: file && file.loaded ? file.rowLabels.length : 0
     readonly property real plotW: Math.max(width - labelW - 14, 10)
     readonly property real plotH: Math.max(height - axisH - legendH, 10)
@@ -32,7 +35,23 @@ Item {
     readonly property real fullSpan: file ? Math.max(file.tmax - file.tmin, 1) : 1
 
     onFileChanged: resetView()
-    Connections { target: root.file; function onChanged() { root.resetView(); } }
+    Connections {
+        target: root.file
+        function onChanged() { root.resetView(); }
+        function onFilterChanged() { root.legend = root.file.topNames(10); root.updateChain(); canvas.requestPaint(); }
+    }
+    onShowInternalChanged: if (file) file.hideInternal = !showInternal
+    onShowChainChanged: updateChain()
+    function updateChain() {
+        chain = showChain && file && file.loaded ? file.criticalChain() : ({});
+        if (chain.count) {                  // look at the chain
+            const pad = Math.max((chain.end - chain.start) * 0.04, 10);
+            viewA = chain.start - pad;
+            viewB = chain.end + pad;
+            clampView();
+        }
+        canvas.requestPaint();
+    }
     onViewAChanged: canvas.requestPaint()
     onViewBChanged: canvas.requestPaint()
     onScrollYChanged: canvas.requestPaint()
@@ -51,6 +70,7 @@ Item {
         selSlices = [];
         selRel = ({});
         legend = file.topNames(10);
+        updateChain();
     }
     function clampView() {
         const span = Math.min(viewB - viewA, fullSpan * 1.05);
@@ -187,6 +207,22 @@ Item {
                     }
                 }
             }
+            // the chain that decided the run time: its slices, and a line from one to the next
+            if (root.chain.slices && root.chain.slices.length > 0) {
+                const cs = root.chain.slices;
+                ctx.strokeStyle = "#ff9800";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                for (let k = 0; k < cs.length; k += 3) {
+                    const y = root.yOf(cs[k]) + root.rowH / 2;
+                    k === 0 ? ctx.moveTo(root.xOf(cs[k + 1]), y) : ctx.lineTo(root.xOf(cs[k + 1]), y);
+                    ctx.lineTo(root.xOf(cs[k + 2]), y);
+                }
+                ctx.stroke();
+                ctx.lineWidth = 2;
+                for (let k = 0; k < cs.length; k += 3)
+                    ctx.strokeRect(root.xOf(cs[k + 1]) - 0.5, root.yOf(cs[k]), Math.max(2, (cs[k + 2] - cs[k + 1]) / upp + 1), root.rowH);
+            }
             ctx.restore();
             // the labels of the rows
             ctx.fillStyle = "#bbbbbb";
@@ -281,6 +317,29 @@ Item {
         }
     }
 
+    // what is shown: the tasks of HPX itself, the chain that decided the run time
+    Row {
+        anchors { right: parent.right; rightMargin: 116; bottom: parent.bottom; bottomMargin: 8 }
+        spacing: 6
+        z: 3
+        Repeater {
+            model: [{t: "HPX internals", k: "i"}, {t: "Critical chain", k: "c"}]
+            delegate: Rectangle {
+                required property var modelData
+                readonly property bool on: modelData.k === "i" ? root.showInternal : root.showChain
+                width: chipText.implicitWidth + 20; height: 22; radius: 11
+                color: on ? (modelData.k === "c" ? "#b26a00" : "#4a6a8a") : "#444444"
+                border.color: on ? "#ffffff" : "#6a6a6a"
+                Text { id: chipText; anchors.centerIn: parent; text: parent.modelData.t; color: "white"; font.pixelSize: 12 }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: parent.modelData.k === "i" ? root.showInternal = !root.showInternal : root.showChain = !root.showChain
+                }
+            }
+        }
+    }
+
     // zoom buttons
     Row {
         anchors { right: parent.right; rightMargin: 16; bottom: parent.bottom; bottomMargin: 8 }
@@ -302,9 +361,26 @@ Item {
         }
     }
 
+    // the chain that decided the run time, in words
+    Text {
+        x: root.labelW; y: root.axisH + root.plotH + 4
+        width: root.plotW
+        visible: root.showChain
+        color: "#ffb74d"; font.pixelSize: 12; font.bold: true; wrapMode: Text.WordWrap
+        text: {
+            const c = root.chain;
+            if (!c.count)
+                return "Critical chain: none. No tasks of this run start one another in a chain (the tasks of HPX itself and the driver hpx_main are not counted).";
+            const parts = (c.byName || []).map(n => n.name + " " + root.fmt(n.us));
+            return "Critical chain: " + c.count + " tasks, each made by the one before. From its first to its last task " + root.fmt(c.spanUs)
+                + " pass, the tasks of the chain run " + root.fmt(c.runUs) + " (" + Math.round(100 * c.runUs / Math.max(1, c.spanUs))
+                + " %), the rest is waiting for a free worker thread or for other inputs. Most time: " + parts.join(", ") + ".";
+        }
+    }
+
     // how to read the picture
     Text {
-        x: root.labelW; y: root.axisH + root.plotH + 5
+        x: root.labelW; y: root.axisH + root.plotH + (root.showChain ? 56 : 5)
         width: root.plotW
         color: "#bbbbbb"; font.pixelSize: 11; wrapMode: Text.WordWrap
         text: "One row = one worker thread (a core that runs HPX tasks), time runs to the right. A bar = a task that ran there, the colour is its name (below). "
@@ -313,9 +389,9 @@ Item {
 
     // the names of the tasks that take the most time
     Flow {
-        x: root.labelW; y: root.axisH + root.plotH + 40
-        width: root.plotW - 110
-        height: root.legendH - 42
+        x: root.labelW; y: root.axisH + root.plotH + (root.showChain ? 78 : 40)
+        width: root.plotW - 300
+        height: root.legendH - (root.showChain ? 80 : 42)
         clip: true
         spacing: 12
         Repeater {

@@ -5,6 +5,8 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QSet>
+#include <QList>
+#include <QPair>
 
 #include <algorithm>
 #include <cstdlib>
@@ -115,6 +117,8 @@ void TaskFile::unload()
     m_deps.clear();
     m_rowLabels.clear();
     m_rowLoc.clear();
+    m_internalSlices = 0;
+    m_nameInternal.clear();
     m_names.clear();
     m_nameCount.clear();
     m_nameTotal.clear();
@@ -218,13 +222,37 @@ bool TaskFile::load(const QUrl &url)
     if (rows.empty())
         return fail(tr("%1 holds no task").arg(shown)), false;
 
+    m_nameInternal = QVector<char>(m_names.size(), 0);
+    for (int i = 0; i < m_names.size(); ++i) {
+        // tasks that HPX runs for itself: timers, AGAS (the namespaces), loading of components, start and stop, the stack switch
+        static const char *const marks[] = {"timer", "namespace", "shutdown", "load_components", "pre_main", "run_helper",
+                                            "trace_on_new_stack", "background", "agas", "hpx::"};
+        const QString n = m_names[i].toLower();
+        for (const char *m : marks)
+            if (n.contains(QLatin1String(m)))
+                m_nameInternal[i] = 1;
+    }
     m_nameCount = QVector<int>(m_names.size(), 0);
     m_nameTotal = QVector<double>(m_names.size(), 0.0);
     for (auto &kv : rows) {
         QVector<Slice> &v = kv.second;
         std::stable_sort(v.begin(), v.end(), [](const Slice &a, const Slice &b) { return a.t0 < b.t0; });
+        // the time a slice ran itself: a task that runs another one inside (hpx_main waiting, for example) does not count that time
+        {
+            QVector<int> open;
+            for (int i = 0; i < v.size(); ++i) {
+                v[i].excl = float(v[i].t1 - v[i].t0);
+                while (!open.isEmpty() && v[open.last()].t1 <= v[i].t0)
+                    open.removeLast();
+                if (!open.isEmpty())
+                    v[open.last()].excl -= float(std::min(v[i].t1, v[open.last()].t1) - v[i].t0);
+                open.append(i);
+            }
+        }
         for (const Slice &s : v) {
             ++m_nameCount[s.name];
+            if (m_nameInternal[s.name])
+                ++m_internalSlices;
             m_nameTotal[s.name] += s.t1 - s.t0;
         }
         m_rowLoc.append(int(kv.first >> 16));
@@ -261,6 +289,124 @@ bool TaskFile::load(const QUrl &url)
     return true;
 }
 
+void TaskFile::setHideInternal(bool hide)
+{
+    if (hide == m_hideInternal)
+        return;
+    m_hideInternal = hide;
+    emit filterChanged();
+}
+
+QVariantMap TaskFile::criticalChain() const
+{
+    struct T
+    {
+        double t0 = 1e300, t1 = -1e300, run = 0, cum = -1;
+        quint64 parent = 0;
+        qint32 name = -1;
+    };
+    QVariantMap out;
+    QHash<quint64, T> tasks;
+    bool anyParent = false;
+    for (const QVector<Slice> &v : m_rows)
+        for (const Slice &s : v) {
+            T &t = tasks[s.task];
+            t.t0 = std::min(t.t0, s.t0);
+            t.t1 = std::max(t.t1, s.t1);
+            t.run += std::max(0.0f, s.excl);
+            if (t.name < 0) {
+                t.name = s.name;
+                t.parent = s.parent;
+            }
+            anyParent = anyParent || s.parent != 0;
+        }
+    if (!anyParent)
+        return out;
+    // the chain with the most running time: for every task the time of the tasks before it on its way back along "made by", plus
+    // its own (the tasks of HPX itself count only when they are shown)
+    // hpx_main only starts the work and waits for it: it is not part of the chain
+    auto driver = [&](int name) { return name >= 0 && m_names.value(name).startsWith(QLatin1String("hpx_main")); };
+    auto weight = [&](const T &t) { return ((m_hideInternal && t.name >= 0 && m_nameInternal.value(t.name) != 0) || driver(t.name)) ? 0.0 : t.run; };
+    for (auto it = tasks.begin(); it != tasks.end(); ++it) {
+        QVector<quint64> path;
+        quint64 k = it.key();
+        while (k != 0 && tasks.contains(k) && tasks[k].cum < 0 && path.size() < 1000000) {
+            path.append(k);
+            k = tasks[k].parent;
+            if (path.contains(k))
+                break;
+        }
+        double base = (k != 0 && tasks.contains(k) && tasks[k].cum >= 0) ? tasks[k].cum : 0.0;
+        for (int n = path.size() - 1; n >= 0; --n) {
+            T &t = tasks[path[n]];
+            base += weight(t);
+            t.cum = base;
+        }
+    }
+    quint64 last = 0;
+    double best = -1;
+    for (auto it = tasks.constBegin(); it != tasks.constEnd(); ++it)
+        if (it->cum > best) {
+            best = it->cum;
+            last = it.key();
+        }
+    QVector<quint64> chain;
+    QSet<quint64> seen;
+    for (quint64 t = last; t != 0 && tasks.contains(t) && !seen.contains(t) && chain.size() < 1000000; t = tasks[t].parent) {
+        seen.insert(t);
+        chain.append(t);
+    }
+    if (chain.size() < 2)
+        return out;
+    // the slices of the chain, and the time in which at least one task of it ran
+    // (a slice that mostly holds other tasks, like hpx_main waiting, is a container and is left out)
+    struct Piece
+    {
+        double row, t0, t1;
+    };
+    QVector<Piece> pieces;
+    QHash<int, double> byName;
+    double run = 0;
+    for (int r = 0; r < m_rows.size(); ++r)
+        for (const Slice &s : m_rows[r])
+            if (seen.contains(s.task) && !skipped(s) && !driver(s.name) && s.excl >= 0.5 * (s.t1 - s.t0)) {
+                pieces.append({double(r), s.t0, s.t1});
+                byName[s.name] += s.excl;
+                run += s.excl;
+            }
+    if (pieces.size() < 4)             // two or three tasks are no chain
+        return out;
+    std::sort(pieces.begin(), pieces.end(), [](const Piece &x, const Piece &y) { return x.t0 < y.t0; });
+    QVector<double> slices;
+    for (const Piece &p : std::as_const(pieces))
+        slices << p.row << p.t0 << p.t1;
+    double start = 1e300, lastEnd = -1e300;           // from the first to the last task of the chain that is shown
+    for (quint64 t : std::as_const(chain)) {
+        const T &tt = tasks[t];
+        if ((m_hideInternal && tt.name >= 0 && m_nameInternal.value(tt.name) != 0) || driver(tt.name))
+            continue;
+        start = std::min(start, tt.t0);
+        lastEnd = std::max(lastEnd, tt.t1);
+    }
+    if (start > lastEnd)
+        return out;
+    QList<QPair<double, int>> names;
+    for (auto it = byName.constBegin(); it != byName.constEnd(); ++it)
+        names.append({it.value(), it.key()});
+    std::sort(names.begin(), names.end(), [](const auto &x, const auto &y) { return x.first > y.first; });
+    QVariantList top;
+    for (int k = 0; k < names.size() && k < 4; ++k)
+        top.append(QVariantMap{{"name", m_names.value(names[k].second)}, {"us", names[k].first}});
+    out["count"] = int(chain.size());
+    out["spanUs"] = lastEnd - start;
+    out["runUs"] = run;
+    out["start"] = start;
+    out["end"] = lastEnd;
+    out["byName"] = top;
+    out["slices"] = QVariant::fromValue(slices);
+    return out;
+}
+
 bool TaskFile::hasLocality(int loc) const
 {
     return m_rowLoc.size() == m_rows.size() && m_rowLoc.contains(loc);
@@ -283,6 +429,8 @@ QVector<double> TaskFile::utilization(int loc, double a, double b, int bins) con
         i = std::max(0, i - 64);
         double covered = a;                    // nested slices (a task that runs another one) count once
         for (; i < v.size() && v[i].t0 < b; ++i) {
+            if (skipped(v[i]))
+                continue;
             const double t0 = std::max({v[i].t0, covered, a}), t1 = std::min(v[i].t1, b);
             covered = std::max(covered, v[i].t1);
             if (t1 <= t0)
@@ -335,7 +483,7 @@ QVector<double> TaskFile::spans(int row, double a, double b, double usPerPx) con
     };
     for (; i < v.size() && v[i].t0 <= b; ++i) {
         const Slice &s = v[i];
-        if (s.t1 < a)
+        if (s.t1 < a || skipped(s))
             continue;
         // merge what is smaller than a pixel and touches the span before it, and slices with the same name
         if (cn && s.t0 - ce < usPerPx && ((s.t1 - s.t0) < usPerPx || (ce - cs) < usPerPx || s.name == cname)) {
@@ -371,6 +519,8 @@ QVariantMap TaskFile::sliceAt(int row, double t, double tolerance) const
     double bestDist = 1e300, bestDur = 1e300;
     for (; i < v.size() && v[i].t0 <= t + tolerance; ++i) {
         const Slice &s = v[i];
+        if (skipped(s))
+            continue;
         const double dist = t < s.t0 ? s.t0 - t : (t > s.t1 ? t - s.t1 : 0.0);
         if (dist > tolerance)
             continue;
@@ -473,6 +623,8 @@ QVariantList TaskFile::topNames(int limit) const
         order[i] = i;
     std::sort(order.begin(), order.end(), [this](int a, int b) { return m_nameTotal[a] > m_nameTotal[b]; });
     QVariantList out;
+    if (m_hideInternal)
+        order.erase(std::remove_if(order.begin(), order.end(), [this](int n) { return m_nameInternal.value(n) != 0; }), order.end());
     for (int k = 0; k < order.size() && k < limit; ++k) {
         QVariantMap m;
         m["index"] = order[k];
