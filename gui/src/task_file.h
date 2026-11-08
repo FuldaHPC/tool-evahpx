@@ -32,6 +32,7 @@ class TaskFile : public QObject
     Q_PROPERTY(int sliceCount READ sliceCount NOTIFY changed)
     Q_PROPERTY(int localities READ localities NOTIFY changed)
     Q_PROPERTY(bool hideInternal READ hideInternal WRITE setHideInternal NOTIFY filterChanged)   // leave out the tasks of HPX itself (timers, AGAS, start and stop)
+    Q_PROPERTY(bool showBackground READ showBackground WRITE setShowBackground NOTIFY filterChanged)   // the polling of idle workers (background_work)
     Q_PROPERTY(int internalCount READ internalCount NOTIFY changed)                            // how many slices of them there are
 
 public:
@@ -92,6 +93,8 @@ public:
     bool hideInternal() const { return m_hideInternal; }
     void setHideInternal(bool hide);
     int internalCount() const { return m_internalSlices; }
+    bool showBackground() const { return m_showBackground; }
+    void setShowBackground(bool show);
     bool loaded() const { return m_loaded; }
     QString name() const { return m_name; }
     QString error() const { return m_error; }
@@ -123,7 +126,14 @@ private:
         double tFrom, tTo;
         qint32 fromRow, toRow;
     };
-    bool skipped(const Slice &s) const { return m_hideInternal && s.name >= 0 && s.name < m_nameInternal.size() && m_nameInternal[s.name]; }
+    bool skipped(const Slice &s) const
+    {
+        if (s.name < 0 || s.name >= m_nameInternal.size())
+            return false;
+        if (m_nameBg.value(s.name) != 0)
+            return !m_showBackground;
+        return m_hideInternal && m_nameInternal[s.name];
+    }
     void fail(const QString &message);
     int rowOfTask(quint64 task, int *index) const;    // row and index of the first slice of a task, -1 if none
 
@@ -134,6 +144,8 @@ private:
     QStringList m_names;
     QVector<QVector<Slice>> m_rows;       // sorted by start time
     bool m_hideInternal = true;
+    bool m_showBackground = false;
+    QVector<char> m_nameBg;               // per name: the background work of an idle worker
     QVector<char> m_nameInternal;         // per name: a task of HPX itself
     int m_internalSlices = 0;
     struct Hand

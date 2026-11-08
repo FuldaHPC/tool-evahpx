@@ -241,7 +241,9 @@ bool TaskFile::load(const QUrl &url)
         return fail(tr("%1 holds no task").arg(shown)), false;
 
     m_nameInternal = QVector<char>(m_names.size(), 0);
+    m_nameBg = QVector<char>(m_names.size(), 0);
     for (int i = 0; i < m_names.size(); ++i) {
+        m_nameBg[i] = m_names[i] == QLatin1String("background_work");
         // tasks that HPX runs for itself: timers, AGAS (the namespaces), loading of components, start and stop, the stack switch
         static const char *const marks[] = {"timer", "namespace", "shutdown", "load_components", "pre_main", "run_helper",
                                             "trace_on_new_stack", "background", "agas"};
@@ -435,6 +437,15 @@ QVariantMap TaskFile::handoverMatrix(int loc, double a, double b) const
     out["workers"] = w;
     out["counts"] = QVariant::fromValue(counts);
     return out;
+}
+
+void TaskFile::setShowBackground(bool show)
+{
+    if (show == m_showBackground)
+        return;
+    m_showBackground = show;
+    m_handsBuilt = false;
+    emit filterChanged();
 }
 
 void TaskFile::setHideInternal(bool hide)
@@ -795,7 +806,9 @@ QVariantList TaskFile::topNames(int limit) const
     std::sort(order.begin(), order.end(), [this](int a, int b) { return m_nameTotal[a] > m_nameTotal[b]; });
     QVariantList out;
     if (m_hideInternal)
-        order.erase(std::remove_if(order.begin(), order.end(), [this](int n) { return m_nameInternal.value(n) != 0; }), order.end());
+        order.erase(std::remove_if(order.begin(), order.end(), [this](int n) { return m_nameBg.value(n) == 0 && m_nameInternal.value(n) != 0; }), order.end());
+    if (!m_showBackground)
+        order.erase(std::remove_if(order.begin(), order.end(), [this](int n) { return m_nameBg.value(n) != 0; }), order.end());
     for (int k = 0; k < order.size() && k < limit; ++k) {
         QVariantMap m;
         m["index"] = order[k];

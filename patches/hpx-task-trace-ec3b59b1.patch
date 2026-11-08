@@ -423,7 +423,7 @@ index db64806..8366c94 100644
                          std::remove_pointer_t<decltype(thrd_data)>;
                      work_stolen(thief_id, victim_id, thrd_data,
 diff --git a/libs/core/tracing/src/backends/tracy.cpp b/libs/core/tracing/src/backends/tracy.cpp
-index 1b39ce6..1c2614b 100644
+index 1b39ce6..e92c40e 100644
 --- a/libs/core/tracing/src/backends/tracy.cpp
 +++ b/libs/core/tracing/src/backends/tracy.cpp
 @@ -24,6 +24,21 @@
@@ -448,7 +448,7 @@ index 1b39ce6..1c2614b 100644
  
  
  // ---------------------------------------------------------------------------------------------
-@@ -759,4 +774,668 @@ namespace hpx::tracing {
+@@ -759,4 +774,703 @@ namespace hpx::tracing {
  
  }    // namespace hpx::tracing
  
@@ -893,6 +893,14 @@ index 1b39ce6..1c2614b 100644
 +            int depth = 0;
 +            std::uint16_t worker = 0xFFFF;
 +
++            // The idle workers run "background_work" over and over (the polling of the network, the parcels). One record for every run
++            // would be millions: the runs that follow each other without a task in between become one record, "this worker polled from
++            // a to b". bg_id is the name number of the task, found when the name is looked up.
++            std::uint32_t bg_id = 0xFFFFFFFFu;
++            bool bg_open = false;
++            std::uint64_t bg_start = 0, bg_end = 0, bg_task = 0;
++            static constexpr std::uint64_t bg_gap = 300000;    // ticks (about 100 us): a longer pause ends the phase
++
 +            struct cache_entry
 +            {
 +                char const* key;
@@ -905,6 +913,7 @@ index 1b39ce6..1c2614b 100644
 +
 +            ~task_tls()
 +            {
++                flush_background();
 +                if (cur == nullptr)
 +                    return;
 +                if (n != 0)
@@ -915,6 +924,14 @@ index 1b39ce6..1c2614b 100644
 +                else
 +                    task_log().release(cur);
 +                cur = nullptr;
++            }
++
++            void flush_background()
++            {
++                if (!bg_open)
++                    return;
++                bg_open = false;
++                push({k_slice, 0, worker, bg_id, bg_start, bg_task, bg_end});
 +            }
 +
 +            void push(task_rec const& r)
@@ -963,6 +980,8 @@ index 1b39ce6..1c2614b 100644
 +                char const* stable = nullptr;
 +                std::uint32_t const id = task_log().intern_slow(s, stable);
 +                skip = !task_log().background && std::strcmp(stable, "background_work") == 0;
++                if (std::strcmp(stable, "background_work") == 0)
++                    bg_id = id;
 +                e = {s, 0, stable, id, skip};
 +                return id;
 +            }
@@ -1084,6 +1103,22 @@ index 1b39ce6..1c2614b 100644
 +        if (s.depth < task_tls::max_depth && s.stack[s.depth].task == serial)
 +        {
 +            auto const& f = s.stack[s.depth];
++            if (f.name == s.bg_id && s.depth == 0)
++            {
++                // a run of the background work: joined to the one before if no task ran in between
++                if (s.bg_open && f.start >= s.bg_end && f.start - s.bg_end <= task_tls::bg_gap)
++                    s.bg_end = end;
++                else
++                {
++                    s.flush_background();
++                    s.bg_open = true;
++                    s.bg_start = f.start;
++                    s.bg_end = end;
++                    s.bg_task = f.task;
++                }
++                return;
++            }
++            s.flush_background();    // a task ran: the idle phase is over
 +            s.push({k_slice, how, s.worker, f.name, f.start, f.task, end});
 +        }
 +        if (how == 2)

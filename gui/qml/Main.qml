@@ -74,7 +74,7 @@ ApplicationWindow {
     readonly property int stripH: tasks.loaded && showCpu && viewMode === "locality" ? 12 : 0
     onStripHChanged: lanes.requestPaint()
     property bool perThread: false       // the threads of every locality as rows of their own, instead of one strip
-    onPerThreadChanged: lanes.requestPaint()
+    onPerThreadChanged: { tasks.showBackground = perThread; lanes.requestPaint(); }
     readonly property int threadRowH: 9
     function stripOf(loc) {              // the height under a locality for its threads
         if (stripH === 0)
@@ -83,7 +83,7 @@ ApplicationWindow {
     }
     function taskColor(idx) {
         const n = tasks.names[idx];
-        return n === "<unnamed task>" ? "#707070" : n === "background_work" ? "#4a4a4a" : Qt.hsla((idx * 0.381966) % 1, 0.6, 0.55, 1);
+        return n === "<unnamed task>" ? "#707070" : n === "background_work" ? "#5a5a5a" : Qt.hsla((idx * 0.381966) % 1, 0.6, 0.55, 1);
     }
     readonly property bool threads: viewMode === "threads"      // what the worker threads did (the task data of the run, if there is any)
     readonly property bool treeView: viewMode === "tree" || viewMode === "tree3d"   // the trees need no time breakdown and no colour legend of the lanes
@@ -1515,7 +1515,9 @@ ApplicationWindow {
                                 for (let q = 0; q < sp.length; q += 6) {
                                     ctx.globalAlpha = sp[q + 3] > 1 ? 0.3 + 0.7 * sp[q + 4] : 1;
                                     ctx.fillStyle = hpxWindow.taskColor(sp[q + 2]);
-                                    ctx.fillRect(xOf(sp[q]), y, Math.max(1, (sp[q + 1] - sp[q]) / upp), hpxWindow.threadRowH - 1);
+                                    const xa = Math.max(leftMargin, xOf(sp[q])), xb = Math.min(width - rightMargin, xOf(sp[q + 1]));
+                                    if (xb > xa || xb >= leftMargin)
+                                        ctx.fillRect(xa, y, Math.max(1, xb - xa), hpxWindow.threadRowH - 1);
                                 }
                                 ctx.globalAlpha = 1;
                                 ctx.fillStyle = "#888888";
@@ -2196,7 +2198,7 @@ ApplicationWindow {
                     required property var modelData
                     spacing: 5
                     Rectangle { width: 14; height: 10; radius: 2; color: hpxWindow.taskColor(modelData.index); anchors.verticalCenter: parent.verticalCenter }
-                    Label { color: "white"; text: modelData.name.length > 42 ? modelData.name.substring(0, 40) + "..." : modelData.name }
+                    Label { color: "white"; text: modelData.name === "background_work" ? "polling (background work of an idle worker)" : modelData.name.length > 42 ? modelData.name.substring(0, 40) + "..." : modelData.name }
                 }
             }
             Row { spacing: 5; visible: hpxWindow.stripH > 0 && hpxWindow.perThread; Rectangle { width: 10; height: 10; radius: 5; color: "#66bb6a"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that sent the parcel" } Rectangle { width: 10; height: 10; radius: 5; color: "#ef5350"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "thread that ran its action" } Rectangle { width: 14; height: 3; color: "#26c6da"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "a value set on one thread wakes a task on another (inside the locality)" } }
