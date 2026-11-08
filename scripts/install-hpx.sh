@@ -147,9 +147,9 @@ else
     if [ ! -f "$tarball" ] || [ "$(sha256 "$tarball")" != "$HPX_TARBALL_SHA256" ]; then
         info "downloading $HPX_URL"
         if command -v curl >/dev/null 2>&1; then
-            curl -fsSL -o "$tarball.part" "$HPX_URL" || die "download failed (internet access needed)"
+            curl -fsSL --retry 5 --retry-delay 5 -o "$tarball.part" "$HPX_URL" || die "download failed (internet access needed)"
         elif command -v wget >/dev/null 2>&1; then
-            wget -q -O "$tarball.part" "$HPX_URL" || die "download failed (internet access needed)"
+            wget -q --tries=5 --waitretry=5 -O "$tarball.part" "$HPX_URL" || die "download failed (internet access needed)"
         else
             die "neither curl nor wget found"
         fi

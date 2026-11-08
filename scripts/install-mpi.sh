@@ -102,9 +102,9 @@ case $tarball in
         if [ ! -f "$file" ] || [ "$(sha256 "$file")" != "$sha_expected" ]; then
             info "downloading $tarball"
             if command -v curl >/dev/null 2>&1; then
-                curl -fsSL -o "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EduHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
+                curl -fsSL --retry 5 --retry-delay 5 -o "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EduHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
             elif command -v wget >/dev/null 2>&1; then
-                wget -q -O "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EduHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
+                wget -q --tries=5 --waitretry=5 -O "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EduHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
             else
                 die "neither curl nor wget found (or give the tarball as a file with --tarball FILE)"
             fi
