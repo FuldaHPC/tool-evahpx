@@ -31,6 +31,8 @@ usage: install-hpx.sh [options]
   --source-dir DIR    use this unpacked HPX source at the pinned commit instead of downloading it (it is copied, not changed)
   --hwloc-root DIR    hwloc to use                          (default: the MPI prefix if it contains one, else the system's)
   --keep-build        do not delete the build directory afterwards
+  --with-task-trace   also build the task log (HPX_TASK_LOG, see docs/task_trace.md): the task hooks of HPX are compiled in,
+                      they cost a little even when the log is off. Without this option HPX is built as before
   -h, --help
 Pinned HPX commit: ${HPX_COMMIT}
 USAGE
@@ -47,6 +49,7 @@ download_dir=$HOME/.cache/eduhpx
 source_dir=
 hwloc_root=
 keep_build=0
+task_trace=0
 
 while [ $# -gt 0 ]; do
     case $1 in
@@ -58,6 +61,7 @@ while [ $# -gt 0 ]; do
         --source-dir) source_dir=${2:?}; shift 2 ;;
         --hwloc-root) hwloc_root=${2:?}; shift 2 ;;
         --keep-build) keep_build=1; shift ;;
+        --with-task-trace) task_trace=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "unknown option $1" ;;
     esac
@@ -72,6 +76,13 @@ for w in mpicc mpicxx; do
     [ -x "$mpi_prefix/bin/$w" ] || die "$mpi_prefix/bin/$w not found: $mpi_prefix is not an MPI installation (see docs/install.md to install the measuring MPI)"
 done
 [ -f "$patch_file" ] || die "patch $patch_file is missing (incomplete checkout of EduHPX?)"
+task_patch=$here/../patches/hpx-task-trace-${HPX_COMMIT:0:8}.patch
+if [ "$task_trace" = 1 ]; then
+    [ -f "$task_patch" ] || die "patch $task_patch is missing (incomplete checkout of EduHPX?)"
+    trace_hooks=ON
+else
+    trace_hooks=OFF
+fi
 
 command -v cmake >/dev/null 2>&1 || die "cmake not found (version 3.18 or newer is needed)"
 cmake_version=$(cmake --version | head -1 | sed -E 's/[^0-9]*([0-9]+\.[0-9]+).*/\1/')
@@ -98,9 +109,9 @@ fi
 
 for t in tar; do command -v $t >/dev/null 2>&1 || die "$t not found"; done
 if command -v patch >/dev/null 2>&1; then
-    apply_patch() { patch -p1 -s -d "$1" < "$patch_file"; }
+    apply_patch() { patch -p1 -s -d "$1" < "$2"; }
 elif command -v git >/dev/null 2>&1; then
-    apply_patch() { git -C "$1" apply -p1 "$patch_file"; }
+    apply_patch() { git -C "$1" apply -p1 "$2"; }
 else
     die "neither patch nor git found (needed to apply the HPX patch)"
 fi
@@ -162,7 +173,11 @@ else
     tar xzf "$tarball" -C "$src" --strip-components=1
 fi
 info "applying $(basename "$patch_file")"
-apply_patch "$src" || die "the patch does not apply: the source is not the pinned commit $HPX_COMMIT"
+apply_patch "$src" "$patch_file" || die "the patch does not apply: the source is not the pinned commit $HPX_COMMIT"
+if [ "$task_trace" = 1 ]; then
+    info "applying $(basename "$task_patch")"
+    apply_patch "$src" "$task_patch" || die "the task trace patch does not apply"
+fi
 
 # ---------------------------------------------------------------- configure, build, install
 info "MPI: $mpi_prefix   compiler: $(command -v "$cxx")   generator: $generator   jobs: $jobs"
@@ -178,7 +193,9 @@ cmake_args=(
     -DHPX_WITH_MALLOC=system -DHPX_WITH_MAX_CPU_COUNT=64
     # Tracy is only the compile gate of the parcel hooks; it is never connected at run time
     -DHPX_WITH_TRACY=ON -DHPX_WITH_PARCEL_PROFILING=ON
-    -DHPX_WITH_TRACING_LIFECYCLE_EVENTS=OFF -DHPX_WITH_TRACING_WORK_STEALING_EVENTS=OFF -DHPX_WITH_TRACING_CAUSAL_EVENTS=OFF
+    # task hooks (lifecycle, work stealing, causal events): only with --with-task-trace
+    -DHPX_WITH_TRACING_LIFECYCLE_EVENTS=$trace_hooks -DHPX_WITH_TRACING_WORK_STEALING_EVENTS=$trace_hooks -DHPX_WITH_TRACING_CAUSAL_EVENTS=$trace_hooks
+    -DHPX_WITH_TRACING_SAMPLE_RATE=1
     # lock events (HPX PR 8001, off by default since ec3b59b) cost about 10 % with Tracy compiled in, even without a profiler
     -DHPX_WITH_TRACING_LOCK_EVENTS=OFF
     -DHPX_WITH_EXAMPLES=OFF -DHPX_WITH_TESTS=OFF -DHPX_WITH_DOCUMENTATION=OFF
@@ -208,6 +225,10 @@ if [ -n "$core" ] && command -v nm >/dev/null 2>&1; then
     symbols=$(nm -D "$core" 2>/dev/null || nm -gU "$core" 2>/dev/null || true)
     if [[ $symbols == *parcel_created_impl* ]]; then
         info "check: the parcel log is in the installed HPX"
+        if [ "$task_trace" = 1 ]; then
+            [[ $symbols == *task_log_executing* ]] || die "the installed HPX has no task log (symbol task_log_executing missing in $core)"
+            info "check: the task log is in the installed HPX"
+        fi
     else
         die "the installed HPX has no parcel log (symbol parcel_created_impl missing in $core)"
     fi
@@ -220,6 +241,7 @@ mkdir -p "$prefix/share/eduhpx"
     echo "mpi_prefix=$mpi_prefix"
     echo "compiler=$(command -v "$cxx")"
     echo "boost=$BOOST_VERSION"
+    echo "task_trace=$task_trace"
     echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$prefix/share/eduhpx/hpx-build-info.txt"
 
@@ -235,3 +257,10 @@ To run it (eduhpx-run sets this for you):
     export HPX_PARCEL_LOG=<dir>/parcels     # writes <dir>/parcels.loc<rank>.csv per process
     export HPX_PARCEL_LOG_MAX_MB=2048       # size cap per process (optional)
 DONE
+if [ "$task_trace" = 1 ]; then
+    cat <<TASKS
+The task log is built in as well:
+    export HPX_TASK_LOG=<dir>/run          # writes <dir>/run.tasks.loc<rank>.bin per process
+    export HPX_TASK_LOG_SAMPLE=1           # record every N-th task only (default 1: all)
+TASKS
+fi
