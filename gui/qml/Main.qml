@@ -73,6 +73,18 @@ ApplicationWindow {
     property bool showCpu: true          // under every locality: how busy its worker threads were (needs the task data of the run)
     readonly property int stripH: tasks.loaded && showCpu && viewMode === "locality" ? 12 : 0
     onStripHChanged: lanes.requestPaint()
+    property bool perThread: false       // the threads of every locality as rows of their own, instead of one strip
+    onPerThreadChanged: lanes.requestPaint()
+    readonly property int threadRowH: 9
+    function stripOf(loc) {              // the height under a locality for its threads
+        if (stripH === 0)
+            return 0;
+        return perThread && tasks.hasLocality(loc) ? tasks.rowsOf(loc).length * threadRowH + 6 : stripH;
+    }
+    function taskColor(idx) {
+        const n = tasks.names[idx];
+        return n === "<unnamed task>" ? "#707070" : n === "background_work" ? "#4a4a4a" : Qt.hsla((idx * 0.381966) % 1, 0.6, 0.55, 1);
+    }
     readonly property bool threads: viewMode === "threads"      // what the worker threads did (the task data of the run, if there is any)
     readonly property bool treeView: viewMode === "tree" || viewMode === "tree3d"   // the trees need no time breakdown and no colour legend of the lanes
     property var laneInfo: []
@@ -292,9 +304,10 @@ ApplicationWindow {
             viewMode = "threads";               // only task data: nothing else to show
     }
     // for the tests: the switches of the thread view
-    function setThreadOptions(chain, internal) {
+    function setThreadOptions(chain, internal, perThread) {
         threadView.showChain = chain;
         threadView.showInternal = internal;
+        hpxWindow.perThread = perThread;
     }
     // for the tests: the part of the task view that is shown, in milliseconds after the start of the run
     function showThreadWindow(fromMs, toMs) {
@@ -1348,6 +1361,7 @@ ApplicationWindow {
             Button { text: "Matrix"; visible: hpxWindow.groups.length > 0 || tasks.loaded; checkable: true; checked: hpxWindow.viewMode === "matrix"; onClicked: hpxWindow.viewMode = "matrix" }
             Button { text: "Threads"; checkable: true; checked: hpxWindow.threads; onClicked: hpxWindow.viewMode = "threads" }
             Button { text: "Threads busy"; visible: tasks.loaded && hpxWindow.viewMode === "locality"; checkable: true; checked: hpxWindow.showCpu; onClicked: hpxWindow.showCpu = checked }
+            Button { text: "Per thread"; visible: tasks.loaded && hpxWindow.viewMode === "locality" && hpxWindow.showCpu; checkable: true; checked: hpxWindow.perThread; onClicked: hpxWindow.perThread = checked }
             Button { text: "Reset zoom"; visible: !hpxWindow.threads && hpxWindow.groups.length > 0; onClicked: hpxWindow.select(hpxWindow.current) }
             Button {
                 text: "Critical path"
@@ -1408,18 +1422,20 @@ ApplicationWindow {
                 }
                 function layout() {
                     const ls = hpxWindow.laneInfo;
-                    let sum = 0;
-                    for (const l of ls)
+                    let sum = 0, pads = 0;
+                    for (const l of ls) {
                         sum += l.tracks;
-                    const pad = lanePad + hpxWindow.stripH;
-                    const avail = height - topMargin - 6 - ls.length * pad;
+                        l.strip = hpxWindow.stripOf(l.loc);
+                        pads += lanePad + l.strip;
+                    }
+                    const avail = height - topMargin - 6 - pads;
                     trackH = Math.max(9, Math.min(20, avail / Math.max(sum, 1)));
-                    hpxWindow.contentH = topMargin + 6 + sum * trackH + ls.length * pad;
+                    hpxWindow.contentH = topMargin + 6 + sum * trackH + pads;
                     hpxWindow.scrollY = Math.max(0, Math.min(hpxWindow.scrollY, Math.max(hpxWindow.contentH - height, 0)));
                     let y = topMargin - hpxWindow.scrollY;
                     for (const l of ls) {
                         l.y0 = y;
-                        l.h = l.tracks * trackH + pad;
+                        l.h = l.tracks * trackH + lanePad + l.strip;
                         y += l.h;
                     }
                 }
@@ -1431,7 +1447,7 @@ ApplicationWindow {
                 }
                 function yOf(piece) {
                     const l = laneOf(piece.loc);
-                    return l ? l.y0 + hpxWindow.stripH + lanePad / 2 + piece.track * trackH + trackH / 2 : 0;
+                    return l ? l.y0 + l.strip + lanePad / 2 + piece.track * trackH + trackH / 2 : 0;
                 }
                 // the arrow starts at the end of the MPI send call, but never after the end of the receive
                 // (big messages arrive while the sender is still in the call)
@@ -1478,7 +1494,28 @@ ApplicationWindow {
                         ctx.fillRect(0, l.y0, width, l.h);
                         ctx.fillStyle = "#dddddd";
                         ctx.fillText("L#" + l.loc, 10, l.y0 + Math.min(l.h, 30) / 2 + 4);
-                        if (hpxWindow.stripH > 0) {          // the share of the worker threads of this locality that run a task
+                        if (hpxWindow.stripH > 0 && hpxWindow.perThread && tasks.hasLocality(l.loc)) {     // one row per worker thread
+                            const rowsOfLoc = tasks.rowsOf(l.loc);
+                            const upp = (hpxWindow.viewEnd - hpxWindow.viewStart) / (width - leftMargin - rightMargin);
+                            ctx.font = "9px sans-serif";
+                            for (let k = 0; k < rowsOfLoc.length; ++k) {
+                                const y = l.y0 + 3 + k * hpxWindow.threadRowH;
+                                ctx.fillStyle = "#1c1c1c";
+                                ctx.fillRect(leftMargin, y, width - leftMargin - rightMargin, hpxWindow.threadRowH - 1);
+                                const sp = tasks.spans(rowsOfLoc[k], hpxWindow.viewStart, hpxWindow.viewEnd, upp);
+                                for (let q = 0; q < sp.length; q += 6) {
+                                    ctx.globalAlpha = sp[q + 3] > 1 ? 0.3 + 0.7 * sp[q + 4] : 1;
+                                    ctx.fillStyle = hpxWindow.taskColor(sp[q + 2]);
+                                    ctx.fillRect(xOf(sp[q]), y, Math.max(1, (sp[q + 1] - sp[q]) / upp), hpxWindow.threadRowH - 1);
+                                }
+                                ctx.globalAlpha = 1;
+                                ctx.fillStyle = "#888888";
+                                ctx.textAlign = "right";
+                                ctx.fillText(tasks.rowLabels[rowsOfLoc[k]].split(" ")[1], leftMargin - 4, y + hpxWindow.threadRowH - 1.5);
+                            }
+                            ctx.textAlign = "left";
+                            ctx.font = "12px sans-serif";
+                        } else if (hpxWindow.stripH > 0) {          // the share of the worker threads of this locality that run a task
                             const nb = Math.max(1, Math.floor((width - leftMargin - rightMargin) / 3));
                             const u = tasks.utilization(l.loc, hpxWindow.viewStart, hpxWindow.viewEnd, nb);
                             const bw = (width - leftMargin - rightMargin) / nb;
@@ -2081,7 +2118,7 @@ ApplicationWindow {
             Row { spacing: 5; Rectangle { width: 2; height: 14; color: "white" } Label { color: "white"; text: "send noticed by HPX" } }
             Row { spacing: 5; visible: hpxWindow.viewMode === "locality"; Label { color: hpxWindow.recvColor; font.bold: true; text: "\u25C6" } Label { color: "white"; text: "HPX saw the header of a large message" } }
             Label { color: hpxWindow.mpiColor; font.bold: true; text: "→ data (blue frame = MPI)"; visible: hpxWindow.viewMode === "locality" }
-            Row { spacing: 5; visible: hpxWindow.stripH > 0; Rectangle { width: 20; height: 10; color: "#33bf8c"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: "worker threads busy (strip on top of every locality)" } }
+            Row { spacing: 5; visible: hpxWindow.stripH > 0; Rectangle { width: 20; height: 10; color: "#33bf8c"; anchors.verticalCenter: parent.verticalCenter } Label { color: "white"; text: hpxWindow.perThread ? "tasks on the worker threads of every locality (one row per thread, colour = name of the task)" : "worker threads busy (strip on top of every locality)" } }
             Label { color: "#ffd600"; font.bold: true; text: "gold = critical path"; visible: hpxWindow.criticalOn && hpxWindow.hasTree }
         }
         Label {

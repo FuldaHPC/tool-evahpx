@@ -504,6 +504,15 @@ QVariantMap TaskFile::criticalChain() const
     return out;
 }
 
+QVector<int> TaskFile::rowsOf(int loc) const
+{
+    QVector<int> out;
+    for (int r = 0; r < m_rows.size() && r < m_rowLoc.size(); ++r)
+        if (m_rowLoc[r] == loc)
+            out << r;
+    return out;
+}
+
 bool TaskFile::hasLocality(int loc) const
 {
     return m_rowLoc.size() == m_rows.size() && m_rowLoc.contains(loc);

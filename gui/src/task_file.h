@@ -59,6 +59,8 @@ public:
     // window [a, b] (absolute microseconds). Empty if the locality has no task data.
     Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;
     Q_INVOKABLE bool hasLocality(int loc) const;
+    // The rows (see spans()) of the worker threads of a locality, in the order of the thread numbers
+    Q_INVOKABLE QVector<int> rowsOf(int loc) const;
     // The slices of a row in the window [a, b] (absolute microseconds), as one list of numbers, six for every span:
     // start, end, name number (of several merged slices: the name with the most time), count of slices, how much of the
     // span is covered by tasks (0 to 1), and 1 if the span holds more than one name.
