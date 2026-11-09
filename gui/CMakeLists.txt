@@ -54,6 +54,7 @@ qt_add_qml_module(eduhpx
         src/run_file.cpp
         src/task_file.h
         src/task_file.cpp
+        src/task_findings.cpp
     RESOURCES
         assets/logo.png
         assets/icon_256.png

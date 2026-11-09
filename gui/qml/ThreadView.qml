@@ -16,6 +16,10 @@ Item {
     property var legend: file && file.loaded ? file.topNames(10) : []
     property bool showChain: false        // the chain of tasks that decided how long the run took
     property var chain: ({})
+    property var findings: []             // what the data say about idle threads and why (TaskFile.findings())
+    property bool showFindings: false
+    property int openFinding: -1           // the finding whose details are open
+    readonly property real panelW: showFindings ? Math.min(440, Math.max(300, width * 0.3)) : 0
     property bool showInternal: false     // the tasks of HPX itself (timers, AGAS, start and stop)
     property string selTask: ""
     property var selSlices: []
@@ -28,17 +32,30 @@ Item {
     readonly property int axisH: 30
     readonly property int legendH: 104
     readonly property int nRows: file && file.loaded ? file.rowLabels.length : 0
-    readonly property real plotW: Math.max(width - labelW - 14, 10)
+    readonly property real plotW: Math.max(width - labelW - 14 - (showFindings ? panelW + 8 : 0), 10)
     readonly property real plotH: Math.max(height - axisH - legendH, 10)
     readonly property real rowH: Math.max(8, Math.min(26, Math.floor(plotH / Math.max(nRows, 1))))
     readonly property real usPerPx: (viewB - viewA) / plotW
     readonly property real fullSpan: file ? Math.max(file.tmax - file.tmin, 1) : 1
 
-    onFileChanged: resetView()
+    onFileChanged: { resetView(); showFindings = file && file.loaded && file.sliceCount < 2000000; }
     Connections {
         target: root.file
-        function onChanged() { root.resetView(); }
-        function onFilterChanged() { root.legend = root.file.topNames(10); root.updateChain(); canvas.requestPaint(); }
+        function onChanged() { root.resetView(); root.showFindings = root.file.loaded && root.file.sliceCount < 2000000; }
+        function onFilterChanged() { root.legend = root.file.topNames(10); root.updateChain(); root.updateFindings(); canvas.requestPaint(); }
+    }
+    onShowFindingsChanged: { updateFindings(); canvas.requestPaint(); }
+    function updateFindings() { findings = showFindings && file && file.loaded ? file.findings() : []; }
+    // look at the part of the run that a finding is about
+    function showFinding(f) {
+        if (f.kind === "chain") {
+            showChain = true;
+            return;
+        }
+        const pad = Math.max((f.to - f.from) * 0.05, 10);
+        viewA = f.from - pad;
+        viewB = f.to + pad;
+        clampView();
     }
     onShowInternalChanged: if (file) file.hideInternal = !showInternal
     onShowChainChanged: updateChain()
@@ -254,7 +271,7 @@ Item {
     // mouse: hover, click, drag, wheel
     MouseArea {
         id: area
-        x: 0; y: 0; width: parent.width; height: root.axisH + root.plotH
+        x: 0; y: 0; width: parent.width - (root.showFindings ? root.panelW + 8 : 0); height: root.axisH + root.plotH
         hoverEnabled: true
         property real lastX: 0
         property real lastY: 0
@@ -323,18 +340,18 @@ Item {
         spacing: 6
         z: 3
         Repeater {
-            model: [{t: "HPX internals", k: "i"}, {t: "Critical chain", k: "c"}]
+            model: [{t: "Findings", k: "f"}, {t: "HPX internals", k: "i"}, {t: "Critical chain", k: "c"}]
             delegate: Rectangle {
                 required property var modelData
-                readonly property bool on: modelData.k === "i" ? root.showInternal : root.showChain
+                readonly property bool on: modelData.k === "i" ? root.showInternal : modelData.k === "f" ? root.showFindings : root.showChain
                 width: chipText.implicitWidth + 20; height: 22; radius: 11
-                color: on ? (modelData.k === "c" ? "#b26a00" : "#4a6a8a") : "#444444"
+                color: on ? (modelData.k === "c" ? "#b26a00" : modelData.k === "f" ? "#2e7d5b" : "#4a6a8a") : "#444444"
                 border.color: on ? "#ffffff" : "#6a6a6a"
                 Text { id: chipText; anchors.centerIn: parent; text: parent.modelData.t; color: "white"; font.pixelSize: 12 }
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: parent.modelData.k === "i" ? root.showInternal = !root.showInternal : root.showChain = !root.showChain
+                    onClicked: parent.modelData.k === "i" ? root.showInternal = !root.showInternal : parent.modelData.k === "f" ? root.showFindings = !root.showFindings : root.showChain = !root.showChain
                 }
             }
         }
@@ -405,6 +422,79 @@ Item {
                     text: modelData.name + "  " + root.fmt(modelData.total) + " (" + modelData.count + ")"
                     elide: Text.ElideRight
                     width: Math.min(implicitWidth, 300)
+                }
+            }
+        }
+    }
+
+    // what the data say: parts of the run with idle threads and what is behind them, click one to look at it
+    Rectangle {
+        visible: root.showFindings && root.file && root.file.loaded
+        z: 5
+        x: root.width - root.panelW - 8; y: root.axisH
+        width: root.panelW; height: root.plotH
+        color: "#262626"; border.color: "#555555"; radius: 6
+        clip: true
+        Text {
+            id: panelHead
+            x: 12; y: 8; width: parent.width - 24
+            color: "#dddddd"; font.pixelSize: 13; font.bold: true
+            text: root.findings.length > 0 ? "Findings (" + root.findings.length + ")" : "Findings"
+        }
+        Text {
+            visible: root.findings.length === 0
+            x: 12; y: 34; width: parent.width - 24
+            color: "#bbbbbb"; font.pixelSize: 12; wrapMode: Text.WordWrap
+            text: "Nothing stands out: no longer part of the run with many idle threads, no very small tasks, and the critical chain is not waiting. (Only what the task data show is checked.)"
+        }
+        ListView {
+            x: 6; y: 32; width: parent.width - 12; height: parent.height - 38
+            spacing: 6
+            clip: true
+            model: root.findings
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar {}
+            delegate: Rectangle {
+                id: item
+                required property var modelData
+                required property int index
+                readonly property bool open: root.openFinding === index
+                width: ListView.view.width - 10
+                height: body.implicitHeight + 16
+                radius: 6
+                color: hit.containsMouse ? "#383838" : "#303030"
+                border.color: modelData.level === "warn" ? "#b26a00" : "#4a6a8a"
+                Column {
+                    id: body
+                    x: 8; y: 8; width: parent.width - 16
+                    spacing: 4
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        color: item.modelData.level === "warn" ? "#ffb74d" : "#90caf9"; font.pixelSize: 12; font.bold: true
+                        text: item.modelData.title
+                    }
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        color: "#ffffff"; font.pixelSize: 12
+                        text: item.modelData.brief
+                    }
+                    Text {
+                        visible: item.open
+                        width: parent.width; wrapMode: Text.WordWrap
+                        color: "#cccccc"; font.pixelSize: 11; lineHeight: 1.1
+                        text: item.modelData.text
+                    }
+                    Text {
+                        color: "#8a8a8a"; font.pixelSize: 10
+                        text: item.open ? "click: close the details" : "click: show this part and the details"
+                    }
+                }
+                MouseArea {
+                    id: hit
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { root.openFinding = item.open ? -1 : item.index; root.showFinding(item.modelData); }
                 }
             }
         }

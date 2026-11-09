@@ -62,6 +62,10 @@ public:
     // start of the first to the end of the last), runUs (time one of them was running), byName [{name, us}] and slices, a flat list
     // of row, start, end for every slice of the chain. Empty if there is no parent information.
     Q_INVOKABLE QVariantMap criticalChain() const;
+    // What the task data say about where threads had nothing to do and why, worst first: [{kind, level, title, text, from, to}]
+    // (from and to: absolute microseconds). Parts of the run with idle threads (are tasks missing, are tasks waiting, waves of a
+    // barrier), very many tiny tasks, the wait of the critical chain. Only what the data show; empty if nothing stands out.
+    Q_INVOKABLE QVariantList findings() const;
     // How busy the worker threads of one locality are: `bins` values from 0 (all idle) to 1 (all busy), for equal parts of the
     // window [a, b] (absolute microseconds). Empty if the locality has no task data.
     Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;

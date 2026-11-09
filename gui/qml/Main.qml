@@ -315,6 +315,8 @@ ApplicationWindow {
         threadView.viewA = tasks.tmin + fromMs * 1000;
         threadView.viewB = tasks.tmin + toMs * 1000;
     }
+    // for the tests: the findings of the task view as JSON (eduhpx with EDUHPX_FINDINGS=1 prints them)
+    function findingsReport() { return JSON.stringify(tasks.findings(), null, 1); }
     // for the tests: the critical path of every group as JSON (eduhpx with EDUHPX_PATH_REPORT=1 prints it)
     function pathReport() {
         const out = [];

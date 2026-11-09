@@ -173,6 +173,11 @@ int main(int argc, char *argv[])
             QMetaObject::invokeMethod(root, "pathReport", Q_RETURN_ARG(QVariant, report));
             std::printf("PATHREPORT %s\n", qPrintable(report.toString()));
         }
+        if (qEnvironmentVariable("EDUHPX_FINDINGS") == QLatin1String("1")) {
+            QVariant report;
+            QMetaObject::invokeMethod(root, "findingsReport", Q_RETURN_ARG(QVariant, report));
+            std::printf("FINDINGS %s\n", qPrintable(report.toString()));
+        }
         if (qEnvironmentVariable("EDUHPX_START_PAGE") == QLatin1String("1"))
             QMetaObject::invokeMethod(root, "showStartPage");   // test: back to the start page after a run was loaded
         if (qEnvironmentVariable("EDUHPX_CRITICAL") == QLatin1String("1"))
