@@ -58,17 +58,11 @@ Item {
         function onFilterChanged() { root.legend = root.file.topNames(10); root.updateChain(); root.updateFindings(); canvas.requestPaint(); }
     }
     onShowFindingsChanged: { updateFindings(); canvas.requestPaint(); }
-    // a run was loaded: the findings are about its first named phase (a program often measures only the named part), else the whole run
+    // a run was loaded: the findings are about the whole run (a program often measures several parts: the phases are chips to look at one)
     function fileLoaded() {
         phases = file && file.loaded ? file.phases() : [];
         scopeKind = "all";
         scopeIndex = -1;
-        for (let i = 0; i < phases.length; ++i)
-            if (phases[i].named) {
-                scopeKind = "phase";
-                scopeIndex = i;
-                break;
-            }
         showFindings = file && file.loaded && file.sliceCount < 2000000;
         updateFindings();
     }

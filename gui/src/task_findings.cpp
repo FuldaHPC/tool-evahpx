@@ -196,7 +196,7 @@ QVariantList TaskFile::findingsIn(double a0, double b0) const
             mean /= len;
             const double idleShare = (1 - mean) * (b - a) / span;         // of all the thread time of the run
             i = j;
-            if (len < 3 || idleShare < 0.02)
+            if (len < 3 || idleShare < 0.04)
                 continue;
 
             QStringList lines;

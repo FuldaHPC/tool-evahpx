@@ -73,6 +73,13 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
                 wait(400);
             }
         }
+        if (!qEnvironmentVariable("EDUHPX_SCOPE").isEmpty()) {         // test: what the findings are about, "view" (the shown part) or "phase:<n>"
+            const QString sc = qEnvironmentVariable("EDUHPX_SCOPE");
+            QMetaObject::invokeMethod(root, "setFindingsScope", Q_ARG(QVariant, sc.startsWith(QLatin1String("phase")) ? QStringLiteral("phase") : sc),
+                                      Q_ARG(QVariant, sc.startsWith(QLatin1String("phase:")) ? sc.mid(6).toInt() : -1),
+                                      Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_OPEN", QStringLiteral("-1")).toInt()));   // EDUHPX_OPEN: the finding whose details are open
+            wait(600);
+        }
         if (!qEnvironmentVariable("EDUHPX_3D_SELECT").isEmpty()) {     // test: the 3D tree looks at this locality
             QMetaObject::invokeMethod(root, "select3dLocality", Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_3D_SELECT").toInt()));
             wait(900);

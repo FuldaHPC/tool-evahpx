@@ -305,6 +305,7 @@ ApplicationWindow {
             viewMode = "threads";               // only task data: nothing else to show
     }
     // for the tests: the switches of the thread view
+    function setFindingsScope(kind, idx, open) { threadView.setScope(kind, idx); threadView.openFinding = open; }     // for the tests: what the findings are about
     function setThreadOptions(chain, internal, perThread) {
         threadView.showChain = chain;
         threadView.showInternal = internal;
