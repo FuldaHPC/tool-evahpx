@@ -457,7 +457,9 @@ void TaskFile::setHideInternal(bool hide)
     emit filterChanged();
 }
 
-QVariantMap TaskFile::criticalChain() const
+QVariantMap TaskFile::criticalChain() const { return chainIn(-1e300, 1e300); }
+
+QVariantMap TaskFile::chainIn(double winA, double winB) const
 {
     struct T
     {
@@ -470,6 +472,8 @@ QVariantMap TaskFile::criticalChain() const
     bool anyParent = false;
     for (const QVector<Slice> &v : m_rows)
         for (const Slice &s : v) {
+            if (s.t0 < winA || s.t1 > winB)          // only the tasks of the window (for a part of the run)
+                continue;
             T &t = tasks[s.task];
             t.t0 = std::min(t.t0, s.t0);
             t.t1 = std::max(t.t1, s.t1);
@@ -529,7 +533,7 @@ QVariantMap TaskFile::criticalChain() const
     double run = 0;
     for (int r = 0; r < m_rows.size(); ++r)
         for (const Slice &s : m_rows[r])
-            if (seen.contains(s.task) && !skipped(s) && !driver(s.name) && s.excl >= 0.5 * (s.t1 - s.t0)) {
+            if (s.t0 >= winA && s.t1 <= winB && seen.contains(s.task) && !skipped(s) && !driver(s.name) && s.excl >= 0.5 * (s.t1 - s.t0)) {
                 pieces.append({double(r), s.t0, s.t1});
                 byName[s.name] += s.excl;
                 run += s.excl;

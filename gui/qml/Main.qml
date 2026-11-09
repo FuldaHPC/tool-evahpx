@@ -316,7 +316,12 @@ ApplicationWindow {
         threadView.viewB = tasks.tmin + toMs * 1000;
     }
     // for the tests: the findings of the task view as JSON (eduhpx with EDUHPX_FINDINGS=1 prints them)
-    function findingsReport() { return JSON.stringify(tasks.findings(), null, 1); }
+    function findingsReport() {
+        const ph = tasks.phases(), out = {phases: ph, whole: tasks.findings(), byPhase: []};
+        for (const p of ph)
+            out.byPhase.push({from: p.from, to: p.to, findings: tasks.findingsIn(p.from, p.to)});
+        return JSON.stringify(out, null, 1);
+    }
     // for the tests: the critical path of every group as JSON (eduhpx with EDUHPX_PATH_REPORT=1 prints it)
     function pathReport() {
         const out = [];

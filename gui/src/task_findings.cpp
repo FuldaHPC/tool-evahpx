@@ -80,10 +80,12 @@ Sample sample(const Loc &l, double a, double b)
 
 } // namespace
 
-QVariantList TaskFile::findings() const
+QVariantList TaskFile::findings() const { return findingsIn(m_tmin, m_tmax); }
+
+QVariantList TaskFile::findingsIn(double a0, double b0) const
 {
     QVariantList out;
-    if (!m_loaded || m_tmax <= m_tmin)
+    if (!m_loaded || b0 <= a0)
         return out;
     auto work = [&](const Slice &s) {
         return s.name >= 0 && s.name < m_nameInternal.size() && !m_nameInternal[s.name] && !m_nameBg.value(s.name);
@@ -97,7 +99,7 @@ QVariantList TaskFile::findings() const
         Loc &l = locs[m_rowLoc[r]];
         ++l.workers;
         for (const Slice &s : m_rows[r])
-            if (work(s)) {
+            if (work(s) && s.t1 > a0 && s.t0 < b0) {
                 l.ws.append({s.t0, s.t1, s.task, s.parent, s.created, s.name, qint32(r)});
                 if (!nameOf.contains(s.task))
                     nameOf.insert(s.task, s.name);
@@ -134,7 +136,7 @@ QVariantList TaskFile::findings() const
     if (locs.isEmpty())
         return out;
     const bool many = locs.size() > 1;
-    const double span = m_tmax - m_tmin;
+    const double span = b0 - a0;
 
     struct Finding
     {
@@ -156,17 +158,17 @@ QVariantList TaskFile::findings() const
         for (int r = 0; r < m_rows.size() && r < m_rowLoc.size(); ++r) {
             if (m_rowLoc[r] != loc)
                 continue;
-            double covered = m_tmin;
+            double covered = a0;
             for (const Slice &s : m_rows[r]) {
                 if (!work(s))
                     continue;
-                const double t0 = std::max({s.t0, covered, m_tmin}), t1 = std::min(s.t1, m_tmax);
+                const double t0 = std::max({s.t0, covered, a0}), t1 = std::min(s.t1, b0);
                 covered = std::max(covered, s.t1);
                 if (t1 <= t0)
                     continue;
-                int k = std::clamp(int((t0 - m_tmin) / width), 0, bins - 1);
+                int k = std::clamp(int((t0 - a0) / width), 0, bins - 1);
                 for (double t = t0; t < t1 && k < bins; ++k) {
-                    const double e = std::min(t1, m_tmin + (k + 1) * width);
+                    const double e = std::min(t1, a0 + (k + 1) * width);
                     busy[k] += e - t;
                     t = e;
                 }
@@ -187,7 +189,7 @@ QVariantList TaskFile::findings() const
             while (j < bins && util[j] < low)
                 ++j;
             const int len = j - i;
-            const double a = m_tmin + i * width, b = m_tmin + j * width;
+            const double a = a0 + i * width, b = a0 + j * width;
             double mean = 0;
             for (int k = i; k < j; ++k)
                 mean += util[k];
@@ -337,7 +339,7 @@ QVariantList TaskFile::findings() const
                 QVector<int> per(bins, 0);
                 int most = 0;
                 for (double x : *t)
-                    most = std::max(most, ++per[std::clamp(int((x - m_tmin) / width), 0, bins - 1)]);
+                    most = std::max(most, ++per[std::clamp(int((x - a0) / width), 0, bins - 1)]);
                 const int level = std::max(10, int(0.15 * most));
                 int bestFrom = -1, bestTo = -1, bestSum = 0;
                 for (int i = 0; i < bins;) {
@@ -360,7 +362,7 @@ QVariantList TaskFile::findings() const
                 }
                 if (bestSum < 1000)
                     continue;
-                const double a = m_tmin + bestFrom * width, b = m_tmin + bestTo * width;
+                const double a = a0 + bestFrom * width, b = a0 + bestTo * width;
                 const Sample s = sample(l, a, b);
                 if (s.both < 0.3 || s.ready < 1)
                     continue;
@@ -376,7 +378,7 @@ QVariantList TaskFile::findings() const
     }
 
     // the chain that decided the run time: how long does it wait, and what is going on while it does?
-    const QVariantMap chain = criticalChain();
+    const QVariantMap chain = chainIn(a0, b0);
     if (chain.value(QStringLiteral("count")).toInt() > 0) {
         const QVector<double> sl = chain.value(QStringLiteral("slices")).value<QVector<double>>();
         const double spanUs = chain.value(QStringLiteral("spanUs")).toDouble(), runUs = chain.value(QStringLiteral("runUs")).toDouble();
@@ -461,6 +463,111 @@ QVariantList TaskFile::findings() const
         }
         out.append(QVariantMap{{"kind", g.f.kind}, {"level", g.f.level}, {"title", title}, {"brief", g.f.brief}, {"text", text},
                                {"from", g.f.a}, {"to", g.f.b}});
+    }
+    return out;
+}
+
+// The stretches of the run in which most of the work is done by named tasks, and those in which it is done by tasks without a name.
+// A program often measures only a part of what it does (the named part, because that is what the author annotated); the findings
+// of the other part are of no use. The driver hpx_main does not count: it only waits.
+QVariantList TaskFile::phases() const
+{
+    QVariantList out;
+    if (!m_loaded || m_tmax <= m_tmin)
+        return out;
+    const int bins = 160;
+    const double width = (m_tmax - m_tmin) / bins;
+    int workers = 0;
+    QVector<double> named(bins, 0.0), anon(bins, 0.0);
+    QHash<qint32, double> byName;
+    auto isAnon = [&](int name) { return m_names.value(name).startsWith(QLatin1String("<unnamed")); };
+    auto isDriver = [&](int name) { return m_names.value(name).startsWith(QLatin1String("hpx_main")); };
+    for (int r = 0; r < m_rows.size(); ++r) {
+        ++workers;
+        for (const Slice &s : m_rows[r]) {
+            if (s.name < 0 || s.name >= m_nameInternal.size() || m_nameInternal[s.name] || m_nameBg.value(s.name) || isDriver(s.name))
+                continue;
+            QVector<double> &to = isAnon(s.name) ? anon : named;
+            for (int k = std::clamp(int((s.t0 - m_tmin) / width), 0, bins - 1); k < bins && m_tmin + k * width < s.t1; ++k)
+                to[k] += std::max(0.0, std::min(s.t1, m_tmin + (k + 1) * width) - std::max(s.t0, m_tmin + k * width));
+        }
+    }
+    if (workers == 0)
+        return out;
+    // the kind of every bin: 1 named, 2 without a name, 0 hardly anything ran (it goes on as before)
+    QVector<int> kind(bins, 0);
+    for (int k = 0; k < bins; ++k)
+        if (named[k] + anon[k] >= 0.02 * width * workers)
+            kind[k] = anon[k] > named[k] ? 2 : 1;
+    for (int k = 1; k < bins; ++k)
+        if (kind[k] == 0)
+            kind[k] = kind[k - 1];
+    for (int k = bins - 2; k >= 0; --k)
+        if (kind[k] == 0)
+            kind[k] = kind[k + 1];
+    if (kind[0] == 0)
+        return out;
+    struct Stretch { int from, to, kind; };
+    QVector<Stretch> st;
+    for (int k = 0; k < bins; ++k) {
+        if (!st.isEmpty() && st.last().kind == kind[k])
+            st.last().to = k + 1;
+        else
+            st.append({k, k + 1, kind[k]});
+    }
+    for (int k = 0; k < st.size();) {                // a stretch shorter than three bins belongs to the one before
+        if (st.size() > 1 && st[k].to - st[k].from < 3) {
+            if (k > 0) {
+                st[k - 1].to = st[k].to;
+                st.removeAt(k);
+                if (k < st.size() && st[k].kind == st[k - 1].kind) {
+                    st[k - 1].to = st[k].to;
+                    st.removeAt(k);
+                }
+            } else {
+                st[1].from = st[0].from;
+                st.removeAt(0);
+            }
+            continue;
+        }
+        ++k;
+    }
+    if (st.size() < 2)
+        return out;
+    // the edges to the time of the first task of the new kind near the edge
+    QVector<double> edge(st.size() + 1);
+    edge[0] = m_tmin;
+    edge[st.size()] = m_tmax;
+    for (int k = 1; k < st.size(); ++k) {
+        const double e = m_tmin + st[k].from * width;
+        double best = e;
+        for (const QVector<Slice> &v : m_rows)
+            for (const Slice &s : v) {
+                if (s.t0 < e - width || s.t0 > e + width || s.name < 0 || s.name >= m_nameInternal.size() || m_nameInternal[s.name] || isDriver(s.name))
+                    continue;
+                if ((isAnon(s.name) ? 2 : 1) == st[k].kind && s.t0 < best)
+                    best = s.t0;
+            }
+        edge[k] = best;
+    }
+    for (int k = 0; k < st.size(); ++k) {
+        double busy = 0;
+        byName.clear();
+        for (int b = st[k].from; b < st[k].to; ++b)
+            busy += named[b] + anon[b];
+        for (const QVector<Slice> &v : m_rows)
+            for (const Slice &s : v)
+                if (s.t0 >= edge[k] && s.t0 < edge[k + 1] && s.name >= 0 && s.name < m_nameInternal.size() && !m_nameInternal[s.name] && !m_nameBg.value(s.name) && !isDriver(s.name))
+                    byName[s.name] += s.t1 - s.t0;
+        QString top;
+        double most = 0;
+        for (auto n = byName.constBegin(); n != byName.constEnd(); ++n)
+            if (n.value() > most) {
+                most = n.value();
+                top = m_names.value(n.key());
+            }
+        out.append(QVariantMap{{"from", edge[k]}, {"to", edge[k + 1]}, {"named", st[k].kind == 1},
+                               {"util", std::min(1.0, busy / (width * (st[k].to - st[k].from) * workers))}, {"name", top}});
     }
     return out;
 }

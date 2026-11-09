@@ -18,6 +18,18 @@ Item {
     property var chain: ({})
     property var findings: []             // what the data say about idle threads and why (TaskFile.findings())
     property bool showFindings: false
+    property var phases: []                // the named and the unnamed stretches of the run (TaskFile.phases())
+    property string scopeKind: "all"       // what the findings are about: "all" (whole run), "phase", "view" (the part that is shown)
+    property int scopeIndex: -1
+    readonly property real scopeA: scopeKind === "phase" && scopeIndex >= 0 && scopeIndex < phases.length ? phases[scopeIndex].from : scopeKind === "view" ? viewA : (file ? file.tmin : 0)
+    readonly property real scopeB: scopeKind === "phase" && scopeIndex >= 0 && scopeIndex < phases.length ? phases[scopeIndex].to : scopeKind === "view" ? viewB : (file ? file.tmax : 1)
+    readonly property var scopes: {
+        const l = [{label: "Whole run", kind: "all", idx: -1}];
+        for (let i = 0; i < phases.length; ++i)
+            l.push({label: (phases[i].named ? "named " : "unnamed ") + "+" + fmt(phases[i].from - file.tmin) + " – +" + fmt(phases[i].to - file.tmin), kind: "phase", idx: i});
+        l.push({label: "Visible part", kind: "view", idx: -1});
+        return l;
+    }
     property int openFinding: -1           // the finding whose details are open
     readonly property real panelW: showFindings ? Math.min(440, Math.max(300, width * 0.3)) : 0
     property bool showInternal: false     // the tasks of HPX itself (timers, AGAS, start and stop)
@@ -38,14 +50,44 @@ Item {
     readonly property real usPerPx: (viewB - viewA) / plotW
     readonly property real fullSpan: file ? Math.max(file.tmax - file.tmin, 1) : 1
 
-    onFileChanged: { resetView(); showFindings = file && file.loaded && file.sliceCount < 2000000; }
+    onFileChanged: { resetView(); fileLoaded(); }
     Connections {
         target: root.file
-        function onChanged() { root.resetView(); root.showFindings = root.file.loaded && root.file.sliceCount < 2000000; }
+        function onChanged() { root.resetView(); root.fileLoaded(); }
         function onFilterChanged() { root.legend = root.file.topNames(10); root.updateChain(); root.updateFindings(); canvas.requestPaint(); }
     }
     onShowFindingsChanged: { updateFindings(); canvas.requestPaint(); }
-    function updateFindings() { findings = showFindings && file && file.loaded ? file.findings() : []; }
+    // a run was loaded: the findings are about its first named phase (a program often measures only the named part), else the whole run
+    function fileLoaded() {
+        phases = file && file.loaded ? file.phases() : [];
+        scopeKind = "all";
+        scopeIndex = -1;
+        for (let i = 0; i < phases.length; ++i)
+            if (phases[i].named) {
+                scopeKind = "phase";
+                scopeIndex = i;
+                break;
+            }
+        showFindings = file && file.loaded && file.sliceCount < 2000000;
+        updateFindings();
+    }
+    function updateFindings() {
+        findings = showFindings && file && file.loaded ? file.findingsIn(scopeA, scopeB) : [];
+        openFinding = -1;
+        canvas.requestPaint();
+    }
+    function setScope(kind, idx) {
+        scopeKind = kind;
+        scopeIndex = idx;
+        if (kind === "phase") {                 // look at the phase
+            const p = phases[idx], pad = (p.to - p.from) * 0.02;
+            viewA = p.from - pad;
+            viewB = p.to + pad;
+            clampView();
+        }
+        updateFindings();
+    }
+    Timer { id: viewTimer; interval: 300; onTriggered: root.updateFindings() }
     // look at the part of the run that a finding is about
     function showFinding(f) {
         if (f.kind === "chain") {
@@ -69,8 +111,8 @@ Item {
         }
         canvas.requestPaint();
     }
-    onViewAChanged: canvas.requestPaint()
-    onViewBChanged: canvas.requestPaint()
+    onViewAChanged: { canvas.requestPaint(); if (scopeKind === "view" && showFindings) viewTimer.restart(); }
+    onViewBChanged: { canvas.requestPaint(); if (scopeKind === "view" && showFindings) viewTimer.restart(); }
     onScrollYChanged: canvas.requestPaint()
     onSelTaskChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
@@ -265,6 +307,13 @@ Item {
                 ctx.stroke();
                 ctx.fillText(root.fmt(t), x, root.axisH - 12);
             }
+            if (root.showFindings && root.scopeKind !== "view") {          // the part of the run that the findings are about
+                const xa = Math.max(root.labelW, root.xOf(root.scopeA)), xb = Math.min(root.labelW + root.plotW, root.xOf(root.scopeB));
+                if (xb > xa) {
+                    ctx.fillStyle = "#3fae80";
+                    ctx.fillRect(xa, root.axisH - 4, xb - xa, 4);
+                }
+            }
         }
     }
 
@@ -439,16 +488,37 @@ Item {
             id: panelHead
             x: 12; y: 8; width: parent.width - 24
             color: "#dddddd"; font.pixelSize: 13; font.bold: true
-            text: root.findings.length > 0 ? "Findings (" + root.findings.length + ")" : "Findings"
+            text: (root.findings.length > 0 ? "Findings (" + root.findings.length + ")" : "Findings") + " for:"
+        }
+        Flow {
+            id: scopeRow
+            x: 12; y: 30; width: parent.width - 24
+            spacing: 5
+            Repeater {
+                model: root.scopes
+                delegate: Rectangle {
+                    required property var modelData
+                    readonly property bool on: root.scopeKind === modelData.kind && root.scopeIndex === modelData.idx
+                    width: scopeText.implicitWidth + 16; height: 20; radius: 10
+                    color: on ? "#2e7d5b" : "#444444"
+                    border.color: on ? "#ffffff" : "#6a6a6a"
+                    Text { id: scopeText; anchors.centerIn: parent; text: parent.modelData.label; color: "white"; font.pixelSize: 11 }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.setScope(parent.modelData.kind, parent.modelData.idx)
+                    }
+                }
+            }
         }
         Text {
             visible: root.findings.length === 0
-            x: 12; y: 34; width: parent.width - 24
+            x: 12; y: scopeRow.y + scopeRow.height + 8; width: parent.width - 24
             color: "#bbbbbb"; font.pixelSize: 12; wrapMode: Text.WordWrap
             text: "Nothing stands out: no longer part of the run with many idle threads, no very small tasks, and the critical chain is not waiting. (Only what the task data show is checked.)"
         }
         ListView {
-            x: 6; y: 32; width: parent.width - 12; height: parent.height - 38
+            x: 6; y: scopeRow.y + scopeRow.height + 6; width: parent.width - 12; height: parent.height - y - 6
             spacing: 6
             clip: true
             model: root.findings

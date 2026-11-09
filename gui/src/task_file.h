@@ -66,6 +66,11 @@ public:
     // (from and to: absolute microseconds). Parts of the run with idle threads (are tasks missing, are tasks waiting, waves of a
     // barrier), very many tiny tasks, the wait of the critical chain. Only what the data show; empty if nothing stands out.
     Q_INVOKABLE QVariantList findings() const;
+    // The same for the part [a, b] of the run only (absolute microseconds), e.g. one of the phases
+    Q_INVOKABLE QVariantList findingsIn(double a, double b) const;
+    // The phases of the run: stretches in which the tasks have names, and stretches of tasks without a name (a program often
+    // measures only the named part): [{from, to, named, util, name}], in time order. Empty if the run is all one kind.
+    Q_INVOKABLE QVariantList phases() const;
     // How busy the worker threads of one locality are: `bins` values from 0 (all idle) to 1 (all busy), for equal parts of the
     // window [a, b] (absolute microseconds). Empty if the locality has no task data.
     Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;
@@ -93,6 +98,8 @@ public:
     // Dependencies (a future that was fulfilled by one task and used by another) in the window: flat list of
     // [fromRow, toRow, tFrom, tTo] ... as far as both tasks have a slice there; at most limit
     Q_INVOKABLE QVector<double> dependencies(double a, double b, int limit) const;
+
+    QVariantMap chainIn(double a, double b) const;      // criticalChain() for the tasks that run inside [a, b]
 
     bool hideInternal() const { return m_hideInternal; }
     void setHideInternal(bool hide);
