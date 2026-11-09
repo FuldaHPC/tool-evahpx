@@ -41,8 +41,9 @@ Item {
     property real mouseY: 0
 
     readonly property int labelW: 70
-    readonly property int axisH: 30
-    readonly property int legendH: 104
+    readonly property int stripH: 40          // how busy the threads were, over time
+    readonly property int axisH: 30 + stripH  // the time axis and the strip: the rows start below
+    readonly property int legendH: showChain ? 140 : 104
     readonly property int nRows: file && file.loaded ? file.rowLabels.length : 0
     readonly property real plotW: Math.max(width - labelW - 14 - (showFindings ? panelW + 8 : 0), 10)
     readonly property real plotH: Math.max(height - axisH - legendH, 10)
@@ -281,6 +282,17 @@ Item {
                 ctx.lineWidth = 2;
                 for (let k = 0; k < cs.length; k += 3)
                     ctx.strokeRect(root.xOf(cs[k + 1]) - 0.5, root.yOf(cs[k]), Math.max(2, (cs[k + 2] - cs[k + 1]) / upp + 1), root.rowH);
+                // before every task of the chain: yellow = it was not made yet, red = it was made and waited for a thread
+                const lk = root.chain.links || [];
+                for (let k = 0; k + 3 < lk.length; k += 4) {
+                    if (lk[k + 1] < 0 || lk[k + 2] <= lk[k])
+                        continue;
+                    const m = Math.min(Math.max(lk[k + 1], lk[k]), lk[k + 2]), y = root.yOf(lk[k + 3]) + root.rowH * 0.3;
+                    ctx.fillStyle = "rgba(255,214,0,0.9)";
+                    ctx.fillRect(root.xOf(lk[k]), y, Math.max(1, (m - lk[k]) / upp), root.rowH * 0.4);
+                    ctx.fillStyle = "rgba(255,70,70,0.95)";
+                    ctx.fillRect(root.xOf(m), y, Math.max(1, (lk[k + 2] - m) / upp), root.rowH * 0.4);
+                }
             }
             ctx.restore();
             // the labels of the rows
@@ -302,16 +314,46 @@ Item {
             for (let t = Math.ceil((root.viewA - t0) / step) * step; t0 + t <= root.viewB; t += step) {
                 const x = root.xOf(t0 + t);
                 ctx.beginPath();
-                ctx.moveTo(x + 0.5, root.axisH - 6);
-                ctx.lineTo(x + 0.5, root.axisH);
+                ctx.moveTo(x + 0.5, 24);
+                ctx.lineTo(x + 0.5, 30);
                 ctx.stroke();
-                ctx.fillText(root.fmt(t), x, root.axisH - 12);
+                ctx.fillText(root.fmt(t), x, 18);
             }
+            // how busy the threads were: the share of the worker threads that ran a task, over time (orange: less than 70 %)
+            ctx.fillStyle = "#2f2f2f";
+            ctx.fillRect(0, 30, width, root.stripH);
+            const bins = Math.max(10, Math.floor(root.plotW / 3));
+            let util = [];
+            let nloc = 0;
+            for (let l = 0; l < root.file.localities; ++l)
+                if (root.file.hasLocality(l)) {
+                    const u = root.file.utilization(l, root.viewA, root.viewB, bins);
+                    for (let k = 0; k < u.length; ++k)
+                        util[k] = (util[k] || 0) + u[k];
+                    ++nloc;
+                }
+            const sh = root.stripH - 8, sy = 30 + root.stripH - 3;
+            for (let k = 0; k < util.length; ++k) {
+                const v = util[k] / Math.max(nloc, 1);
+                ctx.fillStyle = v < 0.7 ? "#ff9800" : "#4f6fa8";
+                ctx.fillRect(root.labelW + k * root.plotW / bins, sy - v * sh, Math.ceil(root.plotW / bins), v * sh);
+            }
+            ctx.strokeStyle = "#666666";
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(root.labelW, sy - sh + 0.5);
+            ctx.lineTo(root.labelW + root.plotW, sy - sh + 0.5);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = "#aaaaaa";
+            ctx.textAlign = "left";
+            ctx.fillText("threads busy", 6, 30 + 33);
+            ctx.fillText("100 % ┄", root.labelW - 44, sy - sh + 4);
             if (root.showFindings && root.scopeKind !== "view") {          // the part of the run that the findings are about
                 const xa = Math.max(root.labelW, root.xOf(root.scopeA)), xb = Math.min(root.labelW + root.plotW, root.xOf(root.scopeB));
                 if (xb > xa) {
                     ctx.fillStyle = "#3fae80";
-                    ctx.fillRect(xa, root.axisH - 4, xb - xa, 4);
+                    ctx.fillRect(xa, 0, xb - xa, 3);
                 }
             }
         }
@@ -440,13 +482,14 @@ Item {
             const parts = (c.byName || []).map(n => n.name + " " + root.fmt(n.us));
             return "Critical chain: " + c.count + " tasks, each made by the one before. From its first to its last task " + root.fmt(c.spanUs)
                 + " pass, the tasks of the chain run " + root.fmt(c.runUs) + " (" + Math.round(100 * c.runUs / Math.max(1, c.spanUs))
-                + " %), the rest is waiting for a free worker thread or for other inputs. Most time: " + parts.join(", ") + ".";
+                + " %), the rest is waiting. Most time: " + parts.join(", ")
+                + ". Yellow strip = the task was not made yet, red = made, waiting for a thread.";
         }
     }
 
     // how to read the picture
     Text {
-        x: root.labelW; y: root.axisH + root.plotH + (root.showChain ? 56 : 5)
+        x: root.labelW; y: root.axisH + root.plotH + (root.showChain ? 70 : 5)
         width: root.plotW
         color: "#bbbbbb"; font.pixelSize: 11; wrapMode: Text.WordWrap
         text: "One row = one worker thread (a core that runs HPX tasks), time runs to the right. A bar = a task that ran there, the colour is its name (below). "
@@ -455,9 +498,9 @@ Item {
 
     // the names of the tasks that take the most time
     Flow {
-        x: root.labelW; y: root.axisH + root.plotH + (root.showChain ? 78 : 40)
+        x: root.labelW; y: root.axisH + root.plotH + (root.showChain ? 104 : 40)
         width: root.plotW - 300
-        height: root.legendH - (root.showChain ? 80 : 42)
+        height: root.legendH - (root.showChain ? 106 : 42)
         clip: true
         spacing: 12
         Repeater {

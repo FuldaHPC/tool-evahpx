@@ -464,17 +464,20 @@ QVariantMap TaskFile::chainIn(double winA, double winB) const
     struct T
     {
         double t0 = 1e300, t1 = -1e300, run = 0, cum = -1, created = -1;
+        qint32 row = -1;
         quint64 parent = 0;
         qint32 name = -1;
     };
     QVariantMap out;
     QHash<quint64, T> tasks;
     bool anyParent = false;
-    for (const QVector<Slice> &v : m_rows)
-        for (const Slice &s : v) {
+    for (int r = 0; r < m_rows.size(); ++r)
+        for (const Slice &s : m_rows[r]) {
             if (s.t0 < winA || s.t1 > winB)          // only the tasks of the window (for a part of the run)
                 continue;
             T &t = tasks[s.task];
+            if (s.t0 < t.t0)
+                t.row = r;
             t.t0 = std::min(t.t0, s.t0);
             t.t1 = std::max(t.t1, s.t1);
             t.run += std::max(0.0f, s.excl);
@@ -568,14 +571,14 @@ QVariantMap TaskFile::chainIn(double winA, double winB) const
     out["start"] = start;
     out["end"] = lastEnd;
     out["byName"] = top;
-    // from one task of the chain to the next: when the one before ended, when the next was made, when it began (a flat list of three)
+    // from one task of the chain to the next: when the one before ended, when the next was made, when it began, its row (a flat list of four)
     QVector<double> links;
     for (int i = int(chain.size()) - 1; i >= 1; --i) {
         const T &child = tasks[chain[i - 1]], &parent = tasks[chain[i]];
         const bool skip = (m_hideInternal && ((child.name >= 0 && m_nameInternal.value(child.name) != 0) || (parent.name >= 0 && m_nameInternal.value(parent.name) != 0)))
             || driver(child.name) || driver(parent.name);
         if (!skip)
-            links << parent.t1 << child.created << child.t0;
+            links << parent.t1 << child.created << child.t0 << child.row;
     }
     out["links"] = QVariant::fromValue(links);
     out["slices"] = QVariant::fromValue(slices);

@@ -400,7 +400,7 @@ QVariantList TaskFile::findingsIn(double a0, double b0) const
                 // it began (it stood in the queue; all threads busy: other work first; threads idle: the scheduler was slow)
                 const QVector<double> links = chain.value(QStringLiteral("links")).value<QVector<double>>();
                 double before = 0, queue = 0, busyQ = 0, idleQ = 0;
-                for (int k = 0; k + 2 < links.size(); k += 3) {
+                for (int k = 0; k + 3 < links.size(); k += 4) {
                     const double end = links[k], made = links[k + 1], start = links[k + 2];
                     if (made < 0 || start <= end)
                         continue;
