@@ -463,7 +463,7 @@ QVariantMap TaskFile::chainIn(double winA, double winB) const
 {
     struct T
     {
-        double t0 = 1e300, t1 = -1e300, run = 0, cum = -1;
+        double t0 = 1e300, t1 = -1e300, run = 0, cum = -1, created = -1;
         quint64 parent = 0;
         qint32 name = -1;
     };
@@ -481,6 +481,7 @@ QVariantMap TaskFile::chainIn(double winA, double winB) const
             if (t.name < 0) {
                 t.name = s.name;
                 t.parent = s.parent;
+                t.created = s.created;
             }
             anyParent = anyParent || s.parent != 0;
         }
@@ -567,6 +568,16 @@ QVariantMap TaskFile::chainIn(double winA, double winB) const
     out["start"] = start;
     out["end"] = lastEnd;
     out["byName"] = top;
+    // from one task of the chain to the next: when the one before ended, when the next was made, when it began (a flat list of three)
+    QVector<double> links;
+    for (int i = int(chain.size()) - 1; i >= 1; --i) {
+        const T &child = tasks[chain[i - 1]], &parent = tasks[chain[i]];
+        const bool skip = (m_hideInternal && ((child.name >= 0 && m_nameInternal.value(child.name) != 0) || (parent.name >= 0 && m_nameInternal.value(parent.name) != 0)))
+            || driver(child.name) || driver(parent.name);
+        if (!skip)
+            links << parent.t1 << child.created << child.t0;
+    }
+    out["links"] = QVariant::fromValue(links);
     out["slices"] = QVariant::fromValue(slices);
     return out;
 }

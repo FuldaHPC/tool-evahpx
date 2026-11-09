@@ -396,32 +396,44 @@ QVariantList TaskFile::findingsIn(double a0, double b0) const
                 brief = QStringLiteral("The run is limited by the chain itself");
                 text += QStringLiteral("\nThe run is limited by this chain: it is busy most of the time, more threads would not make the run shorter. Only shorter tasks on the chain help.");
             } else {
-                // the waits between the tasks of the chain: all threads busy (it stood in the queue), or threads idle
-                double wait = 0, allBusy = 0, idleReady = 0, idleNone = 0;
-                for (int k = 0; k + 5 < sl.size(); k += 3) {
-                    const double e = sl[k + 2], nx = sl[k + 4];
-                    if (nx <= e)
+                // between two tasks of the chain: until the next one was made (its inputs came, or the program made it) and from then on until
+                // it began (it stood in the queue; all threads busy: other work first; threads idle: the scheduler was slow)
+                const QVector<double> links = chain.value(QStringLiteral("links")).value<QVector<double>>();
+                double before = 0, queue = 0, busyQ = 0, idleQ = 0;
+                for (int k = 0; k + 2 < links.size(); k += 3) {
+                    const double end = links[k], made = links[k + 1], start = links[k + 2];
+                    if (made < 0 || start <= end)
                         continue;
-                    const double mid = (e + nx) / 2;
-                    wait += nx - e;
-                    if (l.workers - l.running(mid) == 0)
-                        allBusy += nx - e;
-                    else if (l.readyKnown && l.ready(mid) > 0)
-                        idleReady += nx - e;
-                    else
-                        idleNone += nx - e;
+                    const double m = std::clamp(made, end, start);
+                    before += m - end;
+                    queue += start - m;
+                    if (start > m) {
+                        if (l.workers - l.running((m + start) / 2) == 0)
+                            busyQ += start - m;
+                        else
+                            idleQ += start - m;
+                    }
                 }
+                const double wait = before + queue;
                 if (wait > 0) {
-                    text += QStringLiteral("\nWhile the chain waited (%1): in %2 of that time all threads were busy with other tasks; in %3 threads were idle although a task was ready; in %4 threads were idle and nothing was ready.")
-                                .arg(dur(wait), pct(allBusy / wait), pct(idleReady / wait), pct(idleNone / wait));
-                    if (allBusy / wait >= 0.5) {
-                        text += QStringLiteral("\nThe next task of the chain mostly stood in the queue behind other work. A higher priority for the tasks of the chain (for Cholesky: potrf and trsm) lets it go on earlier.");
+                    text += QStringLiteral("\nWhile the chain waited (%1): %2 of that until the next task of the chain was made (%3), %4 from then on until a thread began it (%5).")
+                                .arg(dur(wait), pct(before / wait), dur(before), pct(queue / wait), dur(queue));
+                    if (before / wait >= 0.5) {
+                        text += QStringLiteral("\nMost of the waiting is before the next task even exists: it was made long after the task before ended. Its other inputs came later, or the program makes it late "
+                                               "(look at what makes the tasks of the chain: a loop that makes them one after the other, or a get() before the next step).");
+                        brief = QStringLiteral("The chain waits %1 for the next task to be made, only %2 in the queue").arg(pct(before / wait), pct(queue / wait));
                         level = QStringLiteral("warn");
-                        brief = QStringLiteral("The chain queues behind other work: a higher priority would help");
-                    } else if (idleReady / wait >= 0.3) {
-                        text += QStringLiteral("\nThreads were idle although tasks were ready: the scheduler needs long to hand them out (stealing, queues). Look at the policy and at the number of tasks.");
+                    }
+                    if (queue > 0)
+                        text += QStringLiteral("\nIn the queue: in %1 of that time all threads were busy with other tasks (a higher priority for the tasks of the chain, for Cholesky potrf and trsm, would let them go on earlier), "
+                                               "in %2 threads were idle although the task was ready (the scheduler needs long to hand it out).")
+                                    .arg(pct(busyQ / queue), pct(idleQ / queue));
+                    if (before / wait < 0.5 && queue / wait >= 0.3 && busyQ / queue >= 0.5) {
+                        brief = QStringLiteral("The chain mostly stands in the queue behind other work: a higher priority would help");
                         level = QStringLiteral("warn");
+                    } else if (before / wait < 0.5 && queue / wait >= 0.3 && idleQ / queue >= 0.3) {
                         brief = QStringLiteral("Threads idle although the chain had a ready task");
+                        level = QStringLiteral("warn");
                     }
                 }
             }
