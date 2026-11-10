@@ -80,6 +80,11 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
                                       Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_OPEN", QStringLiteral("-1")).toInt()));   // EDUHPX_OPEN: the finding whose details are open
             wait(600);
         }
+        if (!qEnvironmentVariable("EDUHPX_PANEL").isEmpty()) {         // test: the panel of the task view: EDUHPX_PANEL=names|task|findings, EDUHPX_HI=<name>, EDUHPX_TASK=<id>, EDUHPX_HIST=run|wait|pause
+            QMetaObject::invokeMethod(root, "setPanel", Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_PANEL")), Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_HI")),
+                                      Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_TASK")), Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_HIST")));
+            wait(600);
+        }
         if (!qEnvironmentVariable("EDUHPX_3D_SELECT").isEmpty()) {     // test: the 3D tree looks at this locality
             QMetaObject::invokeMethod(root, "select3dLocality", Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_3D_SELECT").toInt()));
             wait(900);

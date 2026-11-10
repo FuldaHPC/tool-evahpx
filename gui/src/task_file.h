@@ -71,6 +71,15 @@ public:
     // The phases of the run: stretches in which the tasks have names, and stretches of tasks without a name (a program often
     // measures only the named part): [{from, to, named, util, name}], in time order. Empty if the run is all one kind.
     Q_INVOKABLE QVariantList phases() const;
+    // The task names in the part [a, b] of the run, most time first: [{index, name, count (slices), tasks, total, mean, p50, p90,
+    // max (microseconds a slice ran), waitP50, waitP90 (from a task was made until it began), pauses, pauseTotal, pauseP50, pauseMax
+    // (the time between two slices of a task that suspended or yielded), moved (pauses after which it went on on another thread)}]
+    Q_INVOKABLE QVariantList nameStats(double a, double b) const;
+    // How the durations of one name are spread: 33 counts, four logarithmic bins per decade from 1 us (what: "run", "wait", "pause")
+    Q_INVOKABLE QVector<double> durationHistogram(int name, double a, double b, const QString &what) const;
+    // One task: name, created, wait, start, end, run, slices, pauses [{from, to, dur, rowFrom, rowTo, why, wake}], pauseTotal, moved,
+    // parent, parentName, childCount. Empty if the task is not in the file.
+    Q_INVOKABLE QVariantMap taskInfo(const QString &task) const;
     // How busy the worker threads of one locality are: `bins` values from 0 (all idle) to 1 (all busy), for equal parts of the
     // window [a, b] (absolute microseconds). Empty if the locality has no task data.
     Q_INVOKABLE QVector<double> utilization(int loc, double a, double b, int bins) const;
@@ -99,6 +108,8 @@ public:
     // [fromRow, toRow, tFrom, tTo] ... as far as both tasks have a slice there; at most limit
     Q_INVOKABLE QVector<double> dependencies(double a, double b, int limit) const;
 
+    struct NameData;
+    void collectNames(double a, double b, QHash<qint32, NameData> &out) const;
     QVariantMap chainIn(double a, double b) const;      // criticalChain() for the tasks that run inside [a, b]
 
     bool hideInternal() const { return m_hideInternal; }

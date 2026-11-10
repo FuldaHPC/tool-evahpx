@@ -30,8 +30,20 @@ Item {
         l.push({label: "Visible part", kind: "view", idx: -1});
         return l;
     }
+    property string panelMode: "findings"   // what the panel shows: "findings", "names" (a table of the task names) or "task" (the task that was clicked)
+    property var nameStats: []
+    property int hiName: -1                  // the name that is marked in the rows (the others get dim), -1: none
+    property string sortKey: "total"
+    property bool sortDesc: true
+    property string histKind: "run"          // what the histogram shows: "run", "wait" or "pause"
+    property var taskDetail: ({})
+    readonly property var sortedStats: {
+        const l = nameStats.slice(), d = sortDesc ? -1 : 1, k = sortKey;
+        l.sort((a, b) => k === "name" ? d * a.name.localeCompare(b.name) : d * ((a[k] || 0) - (b[k] || 0)));
+        return l;
+    }
     property int openFinding: -1           // the finding whose details are open
-    readonly property real panelW: showFindings ? Math.min(440, Math.max(300, width * 0.3)) : 0
+    readonly property real panelW: !showFindings ? 0 : panelMode === "names" ? Math.min(600, Math.max(440, width * 0.42)) : Math.min(440, Math.max(300, width * 0.3))
     property bool showInternal: false     // the tasks of HPX itself (timers, AGAS, start and stop)
     property string selTask: ""
     property var selSlices: []
@@ -67,10 +79,22 @@ Item {
         updateFindings();
     }
     function updateFindings() {
-        findings = showFindings && file && file.loaded ? file.findingsIn(scopeA, scopeB) : [];
+        findings = showFindings && file && file.loaded && panelMode === "findings" ? file.findingsIn(scopeA, scopeB) : findings;
+        nameStats = showFindings && file && file.loaded && panelMode === "names" ? file.nameStats(scopeA, scopeB) : nameStats;
         openFinding = -1;
         canvas.requestPaint();
+        hist.requestPaint();
     }
+    onPanelModeChanged: {
+        if (panelMode === "findings")
+            findings = file && file.loaded ? file.findingsIn(scopeA, scopeB) : [];
+        else if (panelMode === "names")
+            nameStats = file && file.loaded ? file.nameStats(scopeA, scopeB) : [];
+        canvas.requestPaint();
+        hist.requestPaint();
+    }
+    onHiNameChanged: { canvas.requestPaint(); hist.requestPaint(); }
+    onHistKindChanged: hist.requestPaint()
     function setScope(kind, idx) {
         scopeKind = kind;
         scopeIndex = idx;
@@ -160,10 +184,16 @@ Item {
     function rowAt(y) { return Math.floor((y - axisH + scrollY) / rowH); }
     function xOf(t) { return labelW + (t - viewA) / usPerPx; }
     function yOf(row) { return axisH + row * rowH - scrollY; }
+    function short(v) {       // three digits: 47.0 us, 6.31 ms, 32.7 s
+        return v >= 1e6 ? (v / 1e6).toPrecision(3) + " s" : v >= 1e3 ? (v / 1e3).toPrecision(3) + " ms" : v.toPrecision(3) + " us";
+    }
     function fmt(v) { return win ? win.fmtUs(v) : v.toFixed(1) + " us"; }
 
     function select(task) {
         selTask = task;
+        taskDetail = task === "" || !file ? ({}) : file.taskInfo(task);
+        if (task !== "" && showFindings)
+            panelMode = "task";
         if (task === "") {
             selSlices = [];
             selRel = ({});
@@ -219,7 +249,7 @@ Item {
                     const x0 = root.xOf(sp[k]), w = Math.max(1, (sp[k + 1] - sp[k]) / upp);
                     ctx.fillStyle = root.colorOf(sp[k + 2]);
                     // many small tasks merged: the more of the time they fill, the stronger the colour
-                    ctx.globalAlpha = sp[k + 3] > 1 ? 0.3 + 0.7 * sp[k + 4] : 1;
+                    ctx.globalAlpha = (sp[k + 3] > 1 ? 0.3 + 0.7 * sp[k + 4] : 1) * (root.hiName >= 0 && sp[k + 2] !== root.hiName ? (sp[k + 5] ? 0.5 : 0.15) : 1);
                     ctx.fillRect(x0, y + 1, w, root.rowH - 2);
                 }
                 ctx.globalAlpha = 1;
@@ -521,15 +551,32 @@ Item {
         width: root.panelW; height: root.plotH
         color: "#262626"; border.color: "#555555"; radius: 6
         clip: true
-        Text {
-            id: panelHead
-            x: 12; y: 8; width: parent.width - 24
-            color: "#dddddd"; font.pixelSize: 13; font.bold: true
-            text: (root.findings.length > 0 ? "Findings (" + root.findings.length + ")" : "Findings") + " for:"
+        Row {
+            id: tabs
+            x: 12; y: 8
+            spacing: 6
+            Repeater {
+                model: [{t: root.findings.length > 0 ? "Findings (" + root.findings.length + ")" : "Findings", k: "findings"}, {t: "Names", k: "names"}, {t: "Task", k: "task"}]
+                delegate: Rectangle {
+                    required property var modelData
+                    readonly property bool on: root.panelMode === modelData.k
+                    width: tabText.implicitWidth + 20; height: 24; radius: 12
+                    color: on ? "#2e7d5b" : "#444444"
+                    border.color: on ? "#ffffff" : "#6a6a6a"
+                    Text { id: tabText; anchors.centerIn: parent; text: parent.modelData.t; color: "white"; font.pixelSize: 12; font.bold: parent.on }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.panelMode = parent.modelData.k
+                    }
+                }
+            }
         }
+        readonly property real contentTop: root.panelMode === "task" ? tabs.y + tabs.height + 8 : scopeRow.y + scopeRow.height + 6
         Flow {
             id: scopeRow
-            x: 12; y: 30; width: parent.width - 24
+            visible: root.panelMode !== "task"
+            x: 12; y: 40; width: parent.width - 24
             spacing: 5
             Repeater {
                 model: root.scopes
@@ -549,12 +596,13 @@ Item {
             }
         }
         Text {
-            visible: root.findings.length === 0
+            visible: root.panelMode === "findings" && root.findings.length === 0
             x: 12; y: scopeRow.y + scopeRow.height + 8; width: parent.width - 24
             color: "#bbbbbb"; font.pixelSize: 12; wrapMode: Text.WordWrap
             text: "Nothing stands out: no longer part of the run with many idle threads, no very small tasks, and the critical chain is not waiting. (Only what the task data show is checked.)"
         }
         ListView {
+            visible: root.panelMode === "findings"
             x: 6; y: scopeRow.y + scopeRow.height + 6; width: parent.width - 12; height: parent.height - y - 6
             spacing: 6
             clip: true
@@ -602,6 +650,215 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: { root.openFinding = item.open ? -1 : item.index; root.showFinding(item.modelData); }
+                }
+            }
+        }
+
+        // the table of the task names in the part of the run: click a name to mark it in the rows, click a head to sort
+        Item {
+            id: namesPage
+            visible: root.panelMode === "names"
+            x: 6; y: parent.contentTop; width: parent.width - 12; height: parent.height - y - 6
+            readonly property var cols: [{k: "count", t: "n", w: 52}, {k: "total", t: "total", w: 68}, {k: "p50", t: "median", w: 64}, {k: "p90", t: "p90", w: 64}, {k: "waitP50", t: "wait", w: 64}, {k: "pauses", t: "pauses", w: 54}]
+            readonly property real nameW: Math.max(90, width - 12 - cols.reduce((a, c) => a + c.w, 0))
+            Row {
+                id: head
+                x: 6; height: 20
+                Text {
+                    width: namesPage.nameW; height: parent.height; verticalAlignment: Text.AlignVCenter
+                    color: root.sortKey === "name" ? "#ffffff" : "#aaaaaa"; font.pixelSize: 11; font.bold: true
+                    text: "name" + (root.sortKey === "name" ? (root.sortDesc ? " ▼" : " ▲") : "")
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { root.sortDesc = root.sortKey === "name" ? !root.sortDesc : false; root.sortKey = "name"; } }
+                }
+                Repeater {
+                    model: namesPage.cols
+                    delegate: Text {
+                        required property var modelData
+                        width: modelData.w; height: 20; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
+                        color: root.sortKey === modelData.k ? "#ffffff" : "#aaaaaa"; font.pixelSize: 11; font.bold: true
+                        text: modelData.t + (root.sortKey === modelData.k ? (root.sortDesc ? " ▼" : " ▲") : "")
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { root.sortDesc = root.sortKey === parent.modelData.k ? !root.sortDesc : true; root.sortKey = parent.modelData.k; } }
+                    }
+                }
+            }
+            ListView {
+                x: 0; y: head.height + 2; width: parent.width; height: parent.height - y - (root.hiName >= 0 ? 176 : 0)
+                clip: true
+                model: root.sortedStats
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {}
+                delegate: Rectangle {
+                    id: nrow
+                    required property var modelData
+                    width: ListView.view.width - 10; height: 22
+                    color: root.hiName === modelData.index ? "#3b4d68" : (nhit.containsMouse ? "#383838" : "transparent")
+                    Row {
+                        x: 6; anchors.verticalCenter: parent.verticalCenter
+                        Item {
+                            width: namesPage.nameW; height: 22
+                            Rectangle { id: sw; x: 0; y: 6; width: 10; height: 10; radius: 2; color: root.colorOf(nrow.modelData.index) }
+                            Text { x: 16; width: parent.width - 18; height: 22; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight; color: "#eeeeee"; font.pixelSize: 11; text: nrow.modelData.name }
+                        }
+                        Repeater {
+                            model: namesPage.cols
+                            delegate: Text {
+                                required property var modelData
+                                width: modelData.w; height: 22; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
+                                color: "#cccccc"; font.pixelSize: 11
+                                text: {
+                                    const v = nrow.modelData[modelData.k];
+                                    return modelData.k === "count" || modelData.k === "pauses" ? String(v) : root.short(v);
+                                }
+                            }
+                        }
+                    }
+                    MouseArea {
+                        id: nhit
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.hiName = root.hiName === modelData.index ? -1 : modelData.index
+                    }
+                }
+            }
+            // how the durations of the marked name are spread (bar height: log of the count)
+            Item {
+                visible: root.hiName >= 0
+                x: 0; y: parent.height - 170; width: parent.width; height: 170
+                Row {
+                    x: 6; y: 2; spacing: 5
+                    Repeater {
+                        model: [{k: "run", t: "run time"}, {k: "wait", t: "wait for a thread"}, {k: "pause", t: "pauses"}]
+                        delegate: Rectangle {
+                            required property var modelData
+                            readonly property bool on: root.histKind === modelData.k
+                            width: ht.implicitWidth + 14; height: 20; radius: 10
+                            color: on ? "#2e7d5b" : "#444444"; border.color: on ? "#ffffff" : "#6a6a6a"
+                            Text { id: ht; anchors.centerIn: parent; text: parent.modelData.t; color: "white"; font.pixelSize: 11 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.histKind = parent.modelData.k }
+                        }
+                    }
+                }
+                Text {
+                    x: 6; y: 26; width: parent.width - 12; wrapMode: Text.WordWrap
+                    color: "#bbbbbb"; font.pixelSize: 11
+                    text: {
+                        const l = root.nameStats.filter(n => n.index === root.hiName);
+                        if (l.length === 0)
+                            return "";
+                        const n = l[0];
+                        if (root.histKind === "run")
+                            return n.name + ": " + n.count + " slices, median " + root.fmt(n.p50) + ", p90 " + root.fmt(n.p90) + ", longest " + root.fmt(n.max);
+                        if (root.histKind === "wait")
+                            return n.name + ": from made to started: median " + root.fmt(n.waitP50) + ", p90 " + root.fmt(n.waitP90);
+                        return n.pauses === 0 ? n.name + ": never paused" : n.name + ": " + n.pauses + " pauses, median " + root.fmt(n.pauseP50) + ", longest " + root.fmt(n.pauseMax) + ", " + n.moved + " went on on another thread";
+                    }
+                }
+                Canvas {
+                    id: hist
+                    x: 0; y: 56; width: parent.width; height: parent.height - 56
+                    renderTarget: Canvas.Image
+                    onPaint: {
+                        const ctx = getContext("2d");
+                        ctx.reset();
+                        ctx.fillStyle = "#262626";
+                        ctx.fillRect(0, 0, width, height);
+                        if (root.hiName < 0 || !root.file || !root.file.loaded)
+                            return;
+                        const c = root.file.durationHistogram(root.hiName, root.scopeA, root.scopeB, root.histKind);
+                        let mx = 1;
+                        for (const v of c)
+                            mx = Math.max(mx, v);
+                        const bw = (width - 12) / c.length, base = height - 18, full = base - 4;
+                        ctx.fillStyle = root.colorOf(root.hiName);
+                        for (let k = 0; k < c.length; ++k)
+                            if (c[k] > 0)
+                                ctx.fillRect(6 + k * bw, base - Math.max(2, full * Math.log(1 + c[k]) / Math.log(1 + mx)), bw - 1, Math.max(2, full * Math.log(1 + c[k]) / Math.log(1 + mx)));
+                        ctx.strokeStyle = "#666666";
+                        ctx.beginPath();
+                        ctx.moveTo(6, base + 0.5);
+                        ctx.lineTo(width - 6, base + 0.5);
+                        ctx.stroke();
+                        ctx.fillStyle = "#aaaaaa";
+                        ctx.font = "10px sans-serif";
+                        ctx.textAlign = "center";
+                        const labels = ["1 us", "10 us", "100 us", "1 ms", "10 ms", "100 ms", "1 s"];
+                        for (let d = 0; d < labels.length; ++d)
+                            ctx.fillText(labels[d], Math.min(width - 22, Math.max(18, 6 + d * 4 * bw)), height - 4);
+                    }
+                }
+            }
+        }
+
+        // the task that was clicked: its life
+        Flickable {
+            id: taskPage
+            visible: root.panelMode === "task"
+            x: 6; y: parent.contentTop; width: parent.width - 12; height: parent.height - y - 6
+            contentHeight: taskCol.height + 12
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar {}
+            Column {
+                id: taskCol
+                x: 6; width: taskPage.width - 22
+                spacing: 6
+                Text {
+                    visible: root.taskDetail.name === undefined
+                    width: parent.width; wrapMode: Text.WordWrap; color: "#bbbbbb"; font.pixelSize: 12; lineHeight: 1.1
+                    text: "Click a bar in the rows to see one task: when it was made, how long it waited for a thread, how long it ran, where it was paused and on which thread it went on."
+                }
+                Text {
+                    visible: root.taskDetail.name !== undefined
+                    width: parent.width; wrapMode: Text.WordWrap; color: root.colorOf(root.taskDetail.nameIndex !== undefined ? root.taskDetail.nameIndex : -1); font.pixelSize: 14; font.bold: true
+                    text: root.taskDetail.name !== undefined ? root.taskDetail.name : ""
+                }
+                Text {
+                    visible: root.taskDetail.name !== undefined
+                    width: parent.width; wrapMode: Text.WordWrap; color: "#dddddd"; font.pixelSize: 12; lineHeight: 1.2
+                    text: {
+                        const t = root.taskDetail;
+                        if (t.name === undefined)
+                            return "";
+                        const rel = v => "+" + root.fmt(v - root.file.tmin);
+                        let s = "made " + (t.created >= 0 ? rel(t.created) : "(not known)") + ", began " + rel(t.start) + (t.wait >= 0 ? " (waited " + root.fmt(t.wait) + " for a thread)" : "") + "\n"
+                            + "ran " + root.fmt(t.run) + " in " + t.slices + (t.slices === 1 ? " slice" : " slices") + ", ended " + rel(t.end) + "\n";
+                        s += t.pauses.length === 0 ? "never paused" : "paused " + t.pauses.length + (t.pauses.length === 1 ? " time" : " times") + ", " + root.fmt(t.pauseTotal) + " in all, went on on another thread " + t.moved + " times";
+                        s += "\nmade by " + (t.parent ? t.parentName : "nobody (a root task)") + ", made " + t.childCount + (t.childCount === 1 ? " task" : " tasks");
+                        return s;
+                    }
+                }
+                Repeater {
+                    model: root.taskDetail.pauses !== undefined ? root.taskDetail.pauses : []
+                    delegate: Rectangle {
+                        id: prow
+                        required property var modelData
+                        width: taskCol.width; height: ptext.implicitHeight + 12; radius: 5
+                        color: phit.containsMouse ? "#383838" : "#303030"; border.color: "#555555"
+                        Text {
+                            id: ptext
+                            x: 8; y: 6; width: parent.width - 16; wrapMode: Text.WordWrap; color: "#dddddd"; font.pixelSize: 11
+                            text: {
+                                const m = prow.modelData, lab = r => root.file.rowLabels[r] || "?";
+                                let s = m.why + " for " + root.fmt(m.dur) + " at +" + root.fmt(m.from - root.file.tmin) + ": " + lab(m.rowFrom) + (m.rowFrom === m.rowTo ? ", went on there" : " → " + lab(m.rowTo));
+                                if (m.wake)
+                                    s += "\nwoken by a value set on " + lab(m.wake.from);
+                                return s;
+                            }
+                        }
+                        MouseArea {
+                            id: phit
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {          // look at the pause
+                                const pad = Math.max(prow.modelData.dur * 2, 500);
+                                root.viewA = prow.modelData.from - pad;
+                                root.viewB = prow.modelData.to + pad;
+                                root.clampView();
+                            }
+                        }
+                    }
                 }
             }
         }

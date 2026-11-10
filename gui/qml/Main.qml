@@ -305,6 +305,16 @@ ApplicationWindow {
             viewMode = "threads";               // only task data: nothing else to show
     }
     // for the tests: the switches of the thread view
+    // for the tests: the panel of the thread view: mode, the name to mark (its text), the task to show, what the histogram shows
+    function setPanel(mode, name, task, hist) {
+        threadView.panelMode = mode;
+        if (name !== "")
+            threadView.hiName = tasks.names.indexOf(name);
+        if (task !== "")
+            threadView.select(task);
+        if (hist !== "")
+            threadView.histKind = hist;
+    }
     function setFindingsScope(kind, idx, open) { threadView.setScope(kind, idx); threadView.openFinding = open; }     // for the tests: what the findings are about
     function setThreadOptions(chain, internal, perThread) {
         threadView.showChain = chain;
