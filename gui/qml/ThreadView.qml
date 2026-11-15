@@ -216,7 +216,7 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             color: "#bbbbbb"; font.pixelSize: 14; lineHeight: 1.2
-            text: "No task data for this run.\nThe threads of HPX are only recorded when the program runs with eduhpx-run --tasks (HPX built with install-hpx.sh --with-task-trace)."
+            text: "No task data for this run.\nThe threads of HPX are only recorded when the program runs with evahpx-run --tasks (HPX built with install-hpx.sh --with-task-trace)."
         }
     }
 

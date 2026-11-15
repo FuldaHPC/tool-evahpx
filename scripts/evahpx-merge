@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""eduhpx-merge RUN_DIR [-o run.csv] [--run NAME] [--program NAME]
+"""evahpx-merge RUN_DIR [-o run.csv] [--run NAME] [--program NAME]
 
-Makes the EduHPX run file (CSV) out of the raw logs of one run:
+Makes the EvaHPX run file (CSV) out of the raw logs of one run:
   parcels.loc<rank>.csv      HPX parcel log of every locality (patched HPX, HPX_PARCEL_LOG)
   eduhpx.mpi.<rank>.bin      MPI log of every rank (measuring MPI, EDUHPX_MPI_LOG_DIR)
-  clock_offsets.csv          offsets between the nodes (written by eduhpx-run for several nodes), optional
+  clock_offsets.csv          offsets between the nodes (written by evahpx-run for several nodes), optional
 Standard library only. Formats: docs/mpi_log_format.md, docs/run_file_format.md."""
 import argparse
 import csv
@@ -15,7 +15,7 @@ import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import eduhpx_merge_core as core  # noqa: E402
+import evahpx_merge_core as core  # noqa: E402
 
 REC = struct.Struct("<QQQqqiHHIIII")  # one 64 byte record
 HAS_DONE = 1 << 3
@@ -24,7 +24,7 @@ HAS_DONE = 1 << 3
 def read_bin(path):
     data = open(path, "rb").read()
     if data[:8] != b"EDUHPXM1":
-        sys.exit("%s: not an EduHPX MPI log" % path)
+        sys.exit("%s: not an EvaHPX MPI log" % path)
     version, rec_size, rank, _world = struct.unpack_from("<IIii", data, 8)
     if version != 1 or rec_size != 64:
         sys.exit("%s: unsupported log version %d" % (path, version))
@@ -81,9 +81,9 @@ def main():
     out = a.output or os.path.join(run_dir, "run.csv")
     name = a.run or os.path.basename(run_dir)
     ranks, nodes, nrecv, node_of = write_rows(run_dir)
-    print("eduhpx-merge: %d MPI logs from %d node(s), %d completed receives" % (ranks, nodes, nrecv))
+    print("evahpx-merge: %d MPI logs from %d node(s), %d completed receives" % (ranks, nodes, nrecv))
     tmp = os.path.join(run_dir, "merged.json")
-    sys.argv = ["eduhpx-merge", run_dir, "--run-id", "0", "--header-bytes", str(a.header_bytes), "-o", tmp]
+    sys.argv = ["evahpx-merge", run_dir, "--run-id", "0", "--header-bytes", str(a.header_bytes), "-o", tmp]
     core.main()
     d = json.load(open(tmp))
     cols = ["msg", "src", "dst", "size", "group_kind", "group", "action", "chunk", "hpx_create", "mpi_send_start", "mpi_send_end",
@@ -101,7 +101,7 @@ def main():
                 us(m.get("tracy_send_us")), us(m.get("tracy_recv_us")), us(m.get("hpx_done_us"))]
 
     with open(out, "w", newline="") as f:
-        f.write("# eduhpx_run_csv 1\n")
+        f.write("# evahpx_run_csv 1\n")
         meta = ["run=%s" % name, "localities=%d" % len(d.get("localities", [])), "nodes=%d" % nodes,
                 "grouping=%s" % d.get("grouping", "").replace(" ", "_")]
         if node_of:     # the node of every locality (HPX locality = MPI rank), in order of the locality number
@@ -117,7 +117,7 @@ def main():
             msgs = [m for m in msgs if m.get("group_kind", "burst") != "burst"]
         for m in msgs:
             w.writerow(row(m))
-    print("eduhpx-merge: %s: %d messages%s" % (out, len(msgs), " (collectives only)" if a.only_collectives else ""))
+    print("evahpx-merge: %s: %d messages%s" % (out, len(msgs), " (collectives only)" if a.only_collectives else ""))
 
 
 if __name__ == "__main__":

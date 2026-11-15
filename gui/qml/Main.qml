@@ -3,7 +3,7 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Dialogs
 
-// EduHPX: one HPX run (parcel events of HPX + MPI messages, a run file made by eduhpx-merge), shown group by
+// EvaHPX: one HPX run (parcel events of HPX + MPI messages, a run file made by evahpx-merge), shown group by
 // group (one broadcast, one barrier, one burst of other traffic, ...) in three views.
 //   By locality: one lane per locality. In its lane a locality shows what it does:
 //       orange       HPX prepares the send     (parcel created -> start of the MPI_Isend call)
@@ -19,7 +19,7 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 860
-    title: run.loaded ? "EduHPX - " + run.name : tasks.loaded ? "EduHPX - " + tasks.name : "EduHPX"
+    title: run.loaded ? "EvaHPX - " + run.name : tasks.loaded ? "EvaHPX - " + tasks.name : "EvaHPX"
     color: "#4d4d4d"
     minimumWidth: 900
     minimumHeight: 660
@@ -36,7 +36,7 @@ ApplicationWindow {
         }
         Menu {
             title: "Help"
-            MenuItem { text: "About EduHPX"; onTriggered: aboutDialog.open() }
+            MenuItem { text: "About EvaHPX"; onTriggered: aboutDialog.open() }
         }
     }
 
@@ -326,14 +326,14 @@ ApplicationWindow {
         threadView.viewA = tasks.tmin + fromMs * 1000;
         threadView.viewB = tasks.tmin + toMs * 1000;
     }
-    // for the tests: the findings of the task view as JSON (eduhpx with EDUHPX_FINDINGS=1 prints them)
+    // for the tests: the findings of the task view as JSON (evahpx with EVAHPX_FINDINGS=1 prints them)
     function findingsReport() {
         const ph = tasks.phases(), out = {phases: ph, whole: tasks.findings(), byPhase: []};
         for (const p of ph)
             out.byPhase.push({from: p.from, to: p.to, findings: tasks.findingsIn(p.from, p.to)});
         return JSON.stringify(out, null, 1);
     }
-    // for the tests: the critical path of every group as JSON (eduhpx with EDUHPX_PATH_REPORT=1 prints it)
+    // for the tests: the critical path of every group as JSON (evahpx with EVAHPX_PATH_REPORT=1 prints it)
     function pathReport() {
         const out = [];
         for (let i = 0; i < groups.length; ++i) {
@@ -359,7 +359,7 @@ ApplicationWindow {
         run.unload();
         tasks.unload();
     }
-    // for the headless preview (eduhpx --render): show a group / a view
+    // for the headless preview (evahpx --render): show a group / a view
     function showGroup(kind, k) {
         for (let i = 0; i < groups.length; ++i)
             if (groups[i].kind === kind && groups[i].k === k) {
@@ -1081,13 +1081,13 @@ ApplicationWindow {
     FileDialog {
         id: fileDialog
         title: "Open a run file or a task file"
-        nameFilters: ["EduHPX run or task file (*.csv)", "All files (*)"]
+        nameFilters: ["EvaHPX run or task file (*.csv)", "All files (*)"]
         onAccepted: hpxWindow.openFile(selectedFile)
     }
 
     Dialog {
         id: aboutDialog
-        title: "About EduHPX"
+        title: "About EvaHPX"
         modal: true
         anchors.centerIn: parent
         width: Math.min(560, hpxWindow.width - 40)
@@ -1095,8 +1095,8 @@ ApplicationWindow {
         contentItem: Label {
             wrapMode: Text.WordWrap
             textFormat: Text.StyledText
-            text: "<b>EduHPX</b> 0.1.0<br>HPX parcels and MPI messages on one timeline.<br><br>"
-                + "Reads a run file (CSV, format 1) made by <i>eduhpx-merge</i>. Times are microseconds on the clock of the first node, -1 = unknown. "
+            text: "<b>EvaHPX</b> 0.1.0<br>HPX parcels and MPI messages on one timeline.<br><br>"
+                + "Reads a run file (CSV, format 1) made by <i>evahpx-merge</i>. Times are microseconds on the clock of the first node, -1 = unknown. "
                 + "Green: MPI send, red: MPI receive, blue frame: MPI, striped: the send request is still open, grey: waiting for data.<br><br>"
                 + "BSD-3-Clause. Uses Qt 6 (LGPL, dynamically linked)."
         }
@@ -2258,7 +2258,7 @@ ApplicationWindow {
             Layout.alignment: Qt.AlignHCenter
             Layout.preferredHeight: Math.max(100, Math.min(180, hpxWindow.height * 0.22))
             Layout.preferredWidth: Layout.preferredHeight * sourceSize.width / Math.max(1, sourceSize.height)
-            source: "qrc:/qt/qml/EduHPX/assets/logo.png"
+            source: "qrc:/qt/qml/EvaHPX/assets/logo.png"
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true

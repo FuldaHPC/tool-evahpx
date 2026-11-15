@@ -1,6 +1,6 @@
 # Third-party notices (stub, to be completed before a release)
 
-EduHPX is BSD-3-Clause (see LICENSE). It uses:
+EvaHPX is BSD-3-Clause (see LICENSE). It uses:
 
 | Component | Licence | How it is used |
 |---|---|---|

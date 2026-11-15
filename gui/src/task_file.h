@@ -1,5 +1,5 @@
-#ifndef EDUHPX_TASK_FILE_H
-#define EDUHPX_TASK_FILE_H
+#ifndef EVAHPX_TASK_FILE_H
+#define EVAHPX_TASK_FILE_H
 
 #include <QHash>
 #include <QObject>
@@ -11,8 +11,8 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
-// One task file of EduHPX (CSV, format 1, see docs/task_file_format.md): what the worker threads of HPX did. One row for every
-// time a task ran on a worker thread (a "slice"), made by eduhpx-tasks from the task logs of HPX. Times are microseconds
+// One task file of EvaHPX (CSV, format 1, see docs/task_file_format.md): what the worker threads of HPX did. One row for every
+// time a task ran on a worker thread (a "slice"), made by evahpx-tasks from the task logs of HPX. Times are microseconds
 // since the epoch (as in the run file).
 //
 // The file can be big (millions of slices), so the view does not get them one by one: spans() merges what is smaller than a
@@ -38,10 +38,10 @@ class TaskFile : public QObject
 public:
     explicit TaskFile(QObject *parent = nullptr);
 
-    // Is this a task file (does it start with "# eduhpx_tasks_csv")?
+    // Is this a task file (does it start with "# evahpx_tasks_csv")?
     Q_INVOKABLE bool isTaskFile(const QUrl &file) const;
     // The file that belongs to this one in the same folder, or an empty URL: for a run file the task file of the same run
-    // (tasks.csv, <name>.tasks.csv), for a task file the run file (run.csv, <name>.csv). eduhpx-run writes run.csv and tasks.csv.
+    // (tasks.csv, <name>.tasks.csv), for a task file the run file (run.csv, <name>.csv). evahpx-run writes run.csv and tasks.csv.
     Q_INVOKABLE QUrl companion(const QUrl &file) const;
     Q_INVOKABLE bool load(const QUrl &file);
     Q_INVOKABLE void unload();
@@ -201,4 +201,4 @@ private:
     int m_taskCount = 0, m_sliceCount = 0, m_localities = 0;
 };
 
-#endif // EDUHPX_TASK_FILE_H
+#endif // EVAHPX_TASK_FILE_H

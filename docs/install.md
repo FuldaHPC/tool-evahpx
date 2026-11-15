@@ -1,8 +1,8 @@
-# Installing HPX for EduHPX
+# Installing HPX for EvaHPX
 
-EduHPX shows what HPX and MPI do for every message. For that it needs
+EvaHPX shows what HPX and MPI do for every message. For that it needs
 
-1. the **measuring MPI** (branch `eduhpx_mpi_data` of the EduMPI repository, as a source tarball, see [mpi_tarball.md](mpi_tarball.md); it is attached to the EduHPX release and `scripts/install-mpi.sh` downloads and builds it) and
+1. the **measuring MPI** (branch `eduhpx_mpi_data` of the EduMPI repository, as a source tarball, see [mpi_tarball.md](mpi_tarball.md); it is attached to the EvaHPX release and `scripts/install-mpi.sh` downloads and builds it) and
 2. **HPX with the parcel log**, which is built by `scripts/install-hpx.sh` from this repository.
 
 HPX itself is not part of this repository. The script downloads one fixed HPX commit from GitHub, checks the checksum of the
@@ -13,16 +13,16 @@ A step-by-step description from the first install to the first trace of your own
 ## Install
 
 ```
-scripts/install-hpx.sh --mpi-prefix ~/eduhpx_mpi --prefix ~/eduhpx_hpx --jobs 16
+scripts/install-hpx.sh --mpi-prefix ~/evahpx_mpi --prefix ~/evahpx_hpx --jobs 16
 ```
 
 | option | meaning |
 |---|---|
-| `--mpi-prefix DIR` | install directory of the measuring MPI. Default: `$EDUHPX_MPI_PREFIX`, else `~/eduhpx_mpi` if it exists |
-| `--prefix DIR` | where HPX is installed (default `~/eduhpx_hpx`) |
+| `--mpi-prefix DIR` | install directory of the measuring MPI. Default: `$EVAHPX_MPI_PREFIX`, else `~/evahpx_mpi` if it exists |
+| `--prefix DIR` | where HPX is installed (default `~/evahpx_hpx`) |
 | `--jobs N` | parallel build jobs (default: all cores) |
 | `--build-dir DIR` | build directory (default: a new temporary directory). Use a local disk; on a cluster the home directory is often a slow network file system |
-| `--download-dir DIR` | where the HPX tarball is kept (default `~/.cache/eduhpx`) |
+| `--download-dir DIR` | where the HPX tarball is kept (default `~/.cache/evahpx`) |
 | `--source-dir DIR` | use an unpacked HPX source at the pinned commit instead of downloading |
 | `--hwloc-root DIR` | hwloc to use (default: the one in the MPI prefix, else the system's) |
 | `--keep-build` | keep the build directory (with `configure.log`, `build.log`) |
@@ -31,7 +31,7 @@ Needs: cmake 3.18 or newer, the C++ compiler behind the MPI wrappers (HPX and MP
 curl or wget, tar, patch or git, and internet access (HPX fetches Boost 1.86, asio and Tracy sources while it configures).
 The build took 29 minutes with 32 jobs on a 32-core node (measured on our cluster); with fewer cores expect a multiple of that. It works on Linux and macOS.
 
-At the end the script checks that the installed HPX contains the parcel log, writes `share/eduhpx/hpx-build-info.txt` and
+At the end the script checks that the installed HPX contains the parcel log, writes `share/evahpx/hpx-build-info.txt` and
 prints how to use the installation.
 
 ## What the patch does
@@ -63,7 +63,7 @@ P,<id>,<from locality>,<time>,<parent thread>   the action was put on the schedu
 D,<id>,<time>                                   scheduling of the action returned
 ```
 
-`eduhpx-merge` joins these files with the MPI log into the run file.
+`evahpx-merge` joins these files with the MPI log into the run file.
 
 ## Update to a newer HPX
 

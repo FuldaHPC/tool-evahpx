@@ -1,6 +1,7 @@
-// One HPX collective, flat or hierarchical, repeated: the examples of EduHPX.
+// One HPX collective, flat or hierarchical, repeated: the examples of EvaHPX.
 //   COLL = bcast | reduce | allreduce | gather | allgather | scatter | alltoall | alltoall_large | alltoall_pairwise | scan_ex | scan_in | barrier
 //   COLL_KIND = flat | hier   COLL_ARITY (hier, default 2)   COLL_ITER (default 10)   COLL_INTS (payload ints, default 1024)
+//   COLL_BARRIER=1 (a barrier after every call, so that calls do not overlap)
 #include <hpx/hpx_init.hpp>
 #include <hpx/include/runtime.hpp>
 #include <hpx/modules/collectives.hpp>
@@ -12,6 +13,7 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -31,7 +33,7 @@ static std::string env_str(char const* name, char const* def)
 
 template <typename Comm>
 int run(Comm& comm, std::string const& coll, std::uint32_t here, std::uint32_t n, std::uint32_t root, int iterations,
-    std::size_t ints)
+    std::size_t ints, hpx::collectives::communicator* sync_comm = nullptr)
 {
     std::uint64_t checksum = 0;
     for (int i = 0; i != iterations; ++i)
@@ -117,6 +119,9 @@ int run(Comm& comm, std::string const& coll, std::uint32_t here, std::uint32_t n
             std::cerr << "unknown COLL " << coll << std::endl;
             return 2;
         }
+        // COLL_BARRIER=1: a flat barrier after every call, so that calls do not overlap and the time of one call can be read
+        if (sync_comm != nullptr)
+            hpx::collectives::barrier(*sync_comm, this_site_arg(here), generation_arg(gen)).get();
     }
     std::cerr << "locality " << here << "/" << n << " done: " << iterations << " x " << coll << ", checksum " << checksum << std::endl;
     return 0;
@@ -132,7 +137,7 @@ int hpx_main()
     int const iterations = static_cast<int>(env_long("COLL_ITER", 10));
     int const arity = static_cast<int>(env_long("COLL_ARITY", 2));
     std::size_t const ints = static_cast<std::size_t>(env_long("COLL_INTS", 1024));
-    std::string const base = "/eduhpx/" + coll + "_" + kind + "/";
+    std::string const base = "/evahpx/" + coll + "_" + kind + "/";
     int rc;
     if (coll == "alltoall_pairwise")
     {
@@ -153,18 +158,22 @@ int hpx_main()
         (void) ints;
         return 0;
     }
+    std::optional<hpx::collectives::communicator> sync_comm;
+    if (env_long("COLL_BARRIER", 0) != 0)
+        sync_comm = create_communicator((base + "sync/").c_str(), num_sites_arg(n), this_site_arg(here), generation_arg(), root_site_arg(root));
+    hpx::collectives::communicator* const sync = sync_comm ? &*sync_comm : nullptr;
     if (kind == "hier")
     {
         auto comm = create_hierarchical_communicator(base.c_str(), num_sites_arg(n), this_site_arg(here), arity_arg(arity),
             generation_arg(), root_site_arg(root), flat_fallback_threshold_arg(0));
         hpx::this_thread::sleep_for(std::chrono::milliseconds(500));    // all communicators exist: a pause between set-up and work
-        rc = run(comm, coll, here, n, root, iterations, ints);
+        rc = run(comm, coll, here, n, root, iterations, ints, sync);
     }
     else
     {
         auto comm = create_communicator(base.c_str(), num_sites_arg(n), this_site_arg(here), generation_arg(), root_site_arg(root));
         hpx::this_thread::sleep_for(std::chrono::milliseconds(500));
-        rc = run(comm, coll, here, n, root, iterations, ints);
+        rc = run(comm, coll, here, n, root, iterations, ints, sync);
     }
     hpx::finalize();
     return rc;

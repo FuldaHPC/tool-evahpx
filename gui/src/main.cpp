@@ -23,7 +23,7 @@ void wait(int ms)
     loop.exec();
 }
 
-// Headless preview: eduhpx run.csv --render out_dir kind:k:view ...   (QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software)
+// Headless preview: evahpx run.csv --render out_dir kind:k:view ...   (QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software)
 // writes one PNG per "kind:k:view", e.g. broadcast:3:tree burst:9:locality (view: locality | message | tree | tree3d;
 // tree3d needs a real graphics window: not QT_QPA_PLATFORM=offscreen with the software backend).
 int render(QQuickWindow *window, QObject *root, const QString &dir, const QStringList &specs)
@@ -40,7 +40,7 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
         QMetaObject::invokeMethod(root, "showView", Q_ARG(QVariant, part[2]));
         QMetaObject::invokeMethod(root, "showGroup", Q_ARG(QVariant, part[0]), Q_ARG(QVariant, part[1].toInt()));
         wait(600);
-        if (qEnvironmentVariable("EDUHPX_SCROLL") == QLatin1String("wheel")) {   // test: real wheel and mouse events down to the end
+        if (qEnvironmentVariable("EVAHPX_SCROLL") == QLatin1String("wheel")) {   // test: real wheel and mouse events down to the end
             const QPointF pos(window->width() / 2.0, window->height() / 2.0 + 60);
             double before = -1;
             for (int i = 0; i < 70; ++i) {
@@ -54,43 +54,43 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
                 before = y;
             }
         }
-        if (qEnvironmentVariable("EDUHPX_SCROLL") == QLatin1String("1")) {       // test: scroll to the end and see whether it stays there
+        if (qEnvironmentVariable("EVAHPX_SCROLL") == QLatin1String("1")) {       // test: scroll to the end and see whether it stays there
             QMetaObject::invokeMethod(root, "scrollBy", Q_ARG(QVariant, 1e7), Q_ARG(QVariant, 0));
             for (int i = 0; i < 4; ++i) {
                 wait(300);
                 std::printf("SCROLL step %d scrollY=%f contentH=%f\n", i, root->property("scrollY").toDouble(), root->property("contentH").toDouble());
             }
         }
-        if (!qEnvironmentVariable("EDUHPX_THREAD_OPTS").isEmpty()) {       // test: switches of the thread view, e.g. "chain,internal"
-            const QString o = qEnvironmentVariable("EDUHPX_THREAD_OPTS");
+        if (!qEnvironmentVariable("EVAHPX_THREAD_OPTS").isEmpty()) {       // test: switches of the thread view, e.g. "chain,internal"
+            const QString o = qEnvironmentVariable("EVAHPX_THREAD_OPTS");
             QMetaObject::invokeMethod(root, "setThreadOptions", Q_ARG(QVariant, o.contains(QLatin1String("chain"))), Q_ARG(QVariant, o.contains(QLatin1String("internal"))), Q_ARG(QVariant, o.contains(QLatin1String("perthread"))));
             wait(400);
         }
-        if (!qEnvironmentVariable("EDUHPX_THREAD_WINDOW").isEmpty()) {     // test: the part of the task view that is shown, "from,to" in ms
-            const QStringList w = qEnvironmentVariable("EDUHPX_THREAD_WINDOW").split(QLatin1Char(','));
+        if (!qEnvironmentVariable("EVAHPX_THREAD_WINDOW").isEmpty()) {     // test: the part of the task view that is shown, "from,to" in ms
+            const QStringList w = qEnvironmentVariable("EVAHPX_THREAD_WINDOW").split(QLatin1Char(','));
             if (w.size() == 2) {
                 QMetaObject::invokeMethod(root, "showThreadWindow", Q_ARG(QVariant, w[0].toDouble()), Q_ARG(QVariant, w[1].toDouble()));
                 wait(400);
             }
         }
-        if (!qEnvironmentVariable("EDUHPX_SCOPE").isEmpty()) {         // test: what the findings are about, "view" (the shown part) or "phase:<n>"
-            const QString sc = qEnvironmentVariable("EDUHPX_SCOPE");
+        if (!qEnvironmentVariable("EVAHPX_SCOPE").isEmpty()) {         // test: what the findings are about, "view" (the shown part) or "phase:<n>"
+            const QString sc = qEnvironmentVariable("EVAHPX_SCOPE");
             QMetaObject::invokeMethod(root, "setFindingsScope", Q_ARG(QVariant, sc.startsWith(QLatin1String("phase")) ? QStringLiteral("phase") : sc),
                                       Q_ARG(QVariant, sc.startsWith(QLatin1String("phase:")) ? sc.mid(6).toInt() : -1),
-                                      Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_OPEN", QStringLiteral("-1")).toInt()));   // EDUHPX_OPEN: the finding whose details are open
+                                      Q_ARG(QVariant, qEnvironmentVariable("EVAHPX_OPEN", QStringLiteral("-1")).toInt()));   // EVAHPX_OPEN: the finding whose details are open
             wait(600);
         }
-        if (!qEnvironmentVariable("EDUHPX_PANEL").isEmpty()) {         // test: the panel of the task view: EDUHPX_PANEL=names|task|findings, EDUHPX_HI=<name>, EDUHPX_TASK=<id>, EDUHPX_HIST=run|wait|pause
-            QMetaObject::invokeMethod(root, "setPanel", Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_PANEL")), Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_HI")),
-                                      Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_TASK")), Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_HIST")));
+        if (!qEnvironmentVariable("EVAHPX_PANEL").isEmpty()) {         // test: the panel of the task view: EVAHPX_PANEL=names|task|findings, EVAHPX_HI=<name>, EVAHPX_TASK=<id>, EVAHPX_HIST=run|wait|pause
+            QMetaObject::invokeMethod(root, "setPanel", Q_ARG(QVariant, qEnvironmentVariable("EVAHPX_PANEL")), Q_ARG(QVariant, qEnvironmentVariable("EVAHPX_HI")),
+                                      Q_ARG(QVariant, qEnvironmentVariable("EVAHPX_TASK")), Q_ARG(QVariant, qEnvironmentVariable("EVAHPX_HIST")));
             wait(600);
         }
-        if (!qEnvironmentVariable("EDUHPX_3D_SELECT").isEmpty()) {     // test: the 3D tree looks at this locality
-            QMetaObject::invokeMethod(root, "select3dLocality", Q_ARG(QVariant, qEnvironmentVariable("EDUHPX_3D_SELECT").toInt()));
+        if (!qEnvironmentVariable("EVAHPX_3D_SELECT").isEmpty()) {     // test: the 3D tree looks at this locality
+            QMetaObject::invokeMethod(root, "select3dLocality", Q_ARG(QVariant, qEnvironmentVariable("EVAHPX_3D_SELECT").toInt()));
             wait(900);
         }
-        if (!qEnvironmentVariable("EDUHPX_CLICK").isEmpty()) {     // test: a mouse click at "x,y" (window coordinates)
-            const QStringList xy = qEnvironmentVariable("EDUHPX_CLICK").split(QLatin1Char(','));
+        if (!qEnvironmentVariable("EVAHPX_CLICK").isEmpty()) {     // test: a mouse click at "x,y" (window coordinates)
+            const QStringList xy = qEnvironmentVariable("EVAHPX_CLICK").split(QLatin1Char(','));
             if (xy.size() == 2) {
                 const QPointF pos(xy[0].toDouble(), xy[1].toDouble());
                 QMouseEvent move(QEvent::MouseMove, pos, window->mapToGlobal(pos.toPoint()), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
@@ -104,17 +104,17 @@ int render(QQuickWindow *window, QObject *root, const QString &dir, const QStrin
                 wait(700);
             }
         }
-        if (!qEnvironmentVariable("EDUHPX_3D_WHEEL").isEmpty()) {     // test: scroll out (this many steps) in the middle of the window
+        if (!qEnvironmentVariable("EVAHPX_3D_WHEEL").isEmpty()) {     // test: scroll out (this many steps) in the middle of the window
             const QPointF pos(window->width() / 2.0, window->height() / 2.0);
-            for (int i = 0; i < qEnvironmentVariable("EDUHPX_3D_WHEEL").toInt(); ++i) {
+            for (int i = 0; i < qEnvironmentVariable("EVAHPX_3D_WHEEL").toInt(); ++i) {
                 QWheelEvent w(pos, window->mapToGlobal(pos.toPoint()), QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
                 QCoreApplication::sendEvent(window, &w);
                 wait(40);
             }
             wait(700);
         }
-        if (!qEnvironmentVariable("EDUHPX_HOVER").isEmpty()) {     // test: mouse pointer at "x,y" (window coordinates), e.g. over a line of the 3D tree
-            const QStringList xy = qEnvironmentVariable("EDUHPX_HOVER").split(QLatin1Char(','));
+        if (!qEnvironmentVariable("EVAHPX_HOVER").isEmpty()) {     // test: mouse pointer at "x,y" (window coordinates), e.g. over a line of the 3D tree
+            const QStringList xy = qEnvironmentVariable("EVAHPX_HOVER").split(QLatin1Char(','));
             if (xy.size() == 2) {
                 const QPointF pos(xy[0].toDouble(), xy[1].toDouble());
                 for (int i = 0; i < 3; ++i) {
@@ -142,14 +142,14 @@ int main(int argc, char *argv[])
     // the example list (examples/index.json) is read from the program's own resources with an XMLHttpRequest
     qputenv("QML_XHR_ALLOW_FILE_READ", "1");
     QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName(QStringLiteral("EduHPX"));
+    QGuiApplication::setApplicationName(QStringLiteral("EvaHPX"));
     QGuiApplication::setApplicationVersion(QStringLiteral("0.0.3"));
-    QGuiApplication::setOrganizationName(QStringLiteral("EduHPX"));
-    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/EduHPX/assets/icon_256.png")));
+    QGuiApplication::setOrganizationName(QStringLiteral("EvaHPX"));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/EvaHPX/assets/icon_256.png")));
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("EduHPX: HPX parcels and MPI messages on one timeline"));
+    parser.setApplicationDescription(QStringLiteral("EvaHPX: HPX parcels and MPI messages on one timeline"));
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument(QStringLiteral("run.csv"), QStringLiteral("run file to open"));
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); },
                      Qt::QueuedConnection);
-    engine.loadFromModule("EduHPX", "Main");
+    engine.loadFromModule("EvaHPX", "Main");
     if (engine.rootObjects().isEmpty())
         return 1;
     QObject *root = engine.rootObjects().first();
@@ -174,34 +174,34 @@ int main(int argc, char *argv[])
     }
     if (rendering) {
         auto *window = qobject_cast<QQuickWindow *>(root);
-        if (!qEnvironmentVariable("EDUHPX_REOPEN").isEmpty()) {     // test: open a second file while a late group is selected
+        if (!qEnvironmentVariable("EVAHPX_REOPEN").isEmpty()) {     // test: open a second file while a late group is selected
             QMetaObject::invokeMethod(root, "select", Q_ARG(QVariant, 30));
-            const QString other = qEnvironmentVariable("EDUHPX_REOPEN");
+            const QString other = qEnvironmentVariable("EVAHPX_REOPEN");
             QMetaObject::invokeMethod(root, "openFile", Q_ARG(QVariant, QUrl::fromLocalFile(QDir::current().absoluteFilePath(other))));
             wait(500);
         }
-        if (qEnvironmentVariable("EDUHPX_PATH_REPORT") == QLatin1String("1")) {
+        if (qEnvironmentVariable("EVAHPX_PATH_REPORT") == QLatin1String("1")) {
             QVariant report;
             QMetaObject::invokeMethod(root, "pathReport", Q_RETURN_ARG(QVariant, report));
             std::printf("PATHREPORT %s\n", qPrintable(report.toString()));
         }
-        if (qEnvironmentVariable("EDUHPX_FINDINGS") == QLatin1String("1")) {
+        if (qEnvironmentVariable("EVAHPX_FINDINGS") == QLatin1String("1")) {
             QVariant report;
             QMetaObject::invokeMethod(root, "findingsReport", Q_RETURN_ARG(QVariant, report));
             std::printf("FINDINGS %s\n", qPrintable(report.toString()));
         }
-        if (qEnvironmentVariable("EDUHPX_START_PAGE") == QLatin1String("1"))
+        if (qEnvironmentVariable("EVAHPX_START_PAGE") == QLatin1String("1"))
             QMetaObject::invokeMethod(root, "showStartPage");   // test: back to the start page after a run was loaded
-        if (qEnvironmentVariable("EDUHPX_CRITICAL") == QLatin1String("1"))
+        if (qEnvironmentVariable("EVAHPX_CRITICAL") == QLatin1String("1"))
             root->setProperty("criticalOn", true);    // preview with the critical path button on
-        if (!qEnvironmentVariable("EDUHPX_3D_MODE").isEmpty())
-            root->setProperty("tree3dMode", qEnvironmentVariable("EDUHPX_3D_MODE"));   // preview of the 3D tree: ratio | send | recv | arrival
-        if (qEnvironmentVariable("EDUHPX_3D_LINES") == QLatin1String("send") || qEnvironmentVariable("EDUHPX_3D_LINES") == QLatin1String("recv")) {
-            root->setProperty("tree3dSend", qEnvironmentVariable("EDUHPX_3D_LINES") == QLatin1String("send"));    // only the send or only the receive lines
-            root->setProperty("tree3dRecv", qEnvironmentVariable("EDUHPX_3D_LINES") == QLatin1String("recv"));
+        if (!qEnvironmentVariable("EVAHPX_3D_MODE").isEmpty())
+            root->setProperty("tree3dMode", qEnvironmentVariable("EVAHPX_3D_MODE"));   // preview of the 3D tree: ratio | send | recv | arrival
+        if (qEnvironmentVariable("EVAHPX_3D_LINES") == QLatin1String("send") || qEnvironmentVariable("EVAHPX_3D_LINES") == QLatin1String("recv")) {
+            root->setProperty("tree3dSend", qEnvironmentVariable("EVAHPX_3D_LINES") == QLatin1String("send"));    // only the send or only the receive lines
+            root->setProperty("tree3dRecv", qEnvironmentVariable("EVAHPX_3D_LINES") == QLatin1String("recv"));
         }
-        if (!qEnvironmentVariable("EDUHPX_ARROWS").isEmpty())
-            root->setProperty("arrowFilter", qEnvironmentVariable("EDUHPX_ARROWS"));   // preview with the Data / Requests filter
+        if (!qEnvironmentVariable("EVAHPX_ARROWS").isEmpty())
+            root->setProperty("arrowFilter", qEnvironmentVariable("EVAHPX_ARROWS"));   // preview with the Data / Requests filter
         // the views are named after the positional arguments that follow the file
         QStringList specs = args.mid(1);
         wait(500);

@@ -6,11 +6,11 @@ index d40c03d..5d1a049 100644
    ADVANCED
  )
  
-+# EduHPX: the task log (HPX_TASK_LOG) names the tasks. HPX keeps the description of a task only if asked: the name of an
++# EvaHPX: the task log (HPX_TASK_LOG) names the tasks. HPX keeps the description of a task only if asked: the name of an
 +# action or of an annotated function, else the address of its function. Much cheaper than HPX_WITH_THREAD_DEBUG_INFO.
 +hpx_option(
 +  HPX_WITH_TASK_TRACE_NAMES BOOL
-+  "Keep the description (or the function address) of every task for the EduHPX task log (default: OFF)" OFF
++  "Keep the description (or the function address) of every task for the EvaHPX task log (default: OFF)" OFF
 +  CATEGORY "Profiling"
 +  ADVANCED
 +)
@@ -57,7 +57,7 @@ index f1c0c01..55df53c 100644
          mutable char fiber_name_[64];
          // 1-in-N tracing sample decision, set at ctor/rebind_base only.
          bool emit_lifecycle_ = false;
-+        // EduHPX task log: the number of this task, unique for the whole run (0: not numbered)
++        // EvaHPX task log: the number of this task, unique for the whole run (0: not numbered)
 +        std::uint64_t trace_serial_ = 0;
  #endif
  
@@ -67,7 +67,7 @@ index f1c0c01..55df53c 100644
          }
  
 +#if defined(HPX_HAVE_TRACY)
-+        /// EduHPX task log: the number of this task, unique for the whole run
++        /// EvaHPX task log: the number of this task, unique for the whole run
 +        /// (the address of a thread_data is not: the objects are reused).
 +        constexpr std::uint64_t trace_serial() const noexcept
 +        {
@@ -141,7 +141,7 @@ index 7f7e6c0..ab5aa58 100644
          // (CMake compile-time default); the runtime override applied at
          // startup via hpx::threads::set_tracing_sample_rate() replaces it.
 -        std::atomic<int> sample_rate{HPX_TRACING_SAMPLE_RATE};
-+        // EduHPX: HPX_TASK_LOG_SAMPLE=N records every N-th task in the task log
++        // EvaHPX: HPX_TASK_LOG_SAMPLE=N records every N-th task in the task log
 +        int initial_sample_rate() noexcept
 +        {
 +            char const* v = std::getenv("HPX_TASK_LOG_SAMPLE");
@@ -210,7 +210,7 @@ index 7302f25..de97fda 100644
              return hpx::tracy::is_profiler_connected();
          }
 +
-+        // EduHPX task log (HPX_TASK_LOG, see tracy.cpp): the hooks below record into it before they look
++        // EvaHPX task log (HPX_TASK_LOG, see tracy.cpp): the hooks below record into it before they look
 +        // at the profiler, so that it needs no connected profiler
 +        HPX_CORE_EXPORT extern std::atomic<bool> g_task_log_enabled;
 +
@@ -271,7 +271,7 @@ index db64806..8366c94 100644
 +#if defined(HPX_HAVE_TRACY)
 +namespace hpx::tracing::detail {
 +
-+    // EduHPX task log: what a task is called. A name if it has one (an action, an annotated function),
++    // EvaHPX task log: what a task is called. A name if it has one (an action, an annotated function),
 +    // else the address of its function (HPX_WITH_TASK_TRACE_NAMES keeps it)
 +    template <typename ThreadData>
 +    void task_log_name(ThreadData* thrdptr, char const*& name, std::size_t& addr) noexcept
@@ -453,7 +453,7 @@ index 1b39ce6..e92c40e 100644
  }    // namespace hpx::tracing
  
 +// ---------------------------------------------------------------------------------------------
-+// EduHPX task log: what the worker threads of one locality do, without a profiler.
++// EvaHPX task log: what the worker threads of one locality do, without a profiler.
 +//
 +// With HPX_TASK_LOG=<prefix> the task hooks of HPX (lifecycle, causal and work stealing events, they
 +// have to be compiled in) are recorded in memory, one buffer per OS thread and no lock on the hot path,
@@ -1161,7 +1161,7 @@ index be7a586..14cbaa9 100644
              hpx::detail::action_invoker<Action> const&) noexcept
          {
 -            return reinterpret_cast<std::size_t>(&Action::invoker);
-+            // EduHPX: invoker is a template, its address cannot be taken here (HPX_HAVE_THREAD_DESCRIPTION_FULL);
++            // EvaHPX: invoker is a template, its address cannot be taken here (HPX_HAVE_THREAD_DESCRIPTION_FULL);
 +            // the name of the action is given by get_function_annotation below, this address is not used
 +            return 0;
          }

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# EduHPX: build and install HPX with the EduHPX parcel log.
+# EvaHPX: build and install HPX with the EvaHPX parcel log.
 #
 # Downloads HPX at one pinned commit (a tarball from GitHub, checksum checked), applies
 # patches/hpx-<commit>.patch (the parcel log, see docs/install.md), configures HPX with the MPI parcel port
 # of the measuring MPI (eduhpx_mpi_data) and installs it. HPX itself is not part of this repository.
 #
-#   scripts/install-hpx.sh --mpi-prefix ~/eduhpx_mpi --prefix ~/eduhpx_hpx [--jobs 16]
+#   scripts/install-hpx.sh --mpi-prefix ~/evahpx_mpi --prefix ~/evahpx_hpx [--jobs 16]
 #
 # Needs: cmake >= 3.18, a C++17 compiler (the one the MPI wrappers use), make or ninja, curl or wget, tar, patch or git,
 # internet access (HPX downloads Boost, asio and Tracy sources while it configures).
@@ -22,12 +22,12 @@ patch_file=$here/../patches/hpx-${HPX_COMMIT:0:8}.patch
 usage() {
     cat <<USAGE
 usage: install-hpx.sh [options]
-  --mpi-prefix DIR    measuring MPI (eduhpx_mpi_data); default \$EDUHPX_MPI_PREFIX, else ~/eduhpx_mpi if it exists
-  --prefix DIR        install directory of HPX              (default ~/eduhpx_hpx)
+  --mpi-prefix DIR    measuring MPI (eduhpx_mpi_data); default \$EVAHPX_MPI_PREFIX, else ~/evahpx_mpi if it exists
+  --prefix DIR        install directory of HPX              (default ~/evahpx_hpx)
   --jobs N            parallel build jobs                   (default: number of cores)
   --build-dir DIR     build directory                       (default: a new directory in \${TMPDIR:-/tmp}; use a local disk,
                       not a network file system, the build is much faster there)
-  --download-dir DIR  where the HPX tarball is kept         (default ~/.cache/eduhpx)
+  --download-dir DIR  where the HPX tarball is kept         (default ~/.cache/evahpx)
   --source-dir DIR    use this unpacked HPX source at the pinned commit instead of downloading it (it is copied, not changed)
   --hwloc-root DIR    hwloc to use                          (default: the MPI prefix if it contains one, else the system's)
   --keep-build        do not delete the build directory afterwards
@@ -41,11 +41,11 @@ USAGE
 die() { echo "install-hpx: $*" >&2; exit 1; }
 info() { echo "install-hpx: $*"; }
 
-mpi_prefix=${EDUHPX_MPI_PREFIX:-}
-prefix=$HOME/eduhpx_hpx
+mpi_prefix=${EVAHPX_MPI_PREFIX:-}
+prefix=$HOME/evahpx_hpx
 jobs=
 build_dir=
-download_dir=$HOME/.cache/eduhpx
+download_dir=$HOME/.cache/evahpx
 source_dir=
 hwloc_root=
 keep_build=0
@@ -68,17 +68,17 @@ while [ $# -gt 0 ]; do
 done
 
 # ---------------------------------------------------------------- checks
-if [ -z "$mpi_prefix" ] && [ -x "$HOME/eduhpx_mpi/bin/mpicxx" ]; then
-    mpi_prefix=$HOME/eduhpx_mpi
+if [ -z "$mpi_prefix" ] && [ -x "$HOME/evahpx_mpi/bin/mpicxx" ]; then
+    mpi_prefix=$HOME/evahpx_mpi
 fi
-[ -n "$mpi_prefix" ] || die "no MPI: give --mpi-prefix DIR (the install directory of the measuring MPI, eduhpx_mpi_data) or set EDUHPX_MPI_PREFIX"
+[ -n "$mpi_prefix" ] || die "no MPI: give --mpi-prefix DIR (the install directory of the measuring MPI, eduhpx_mpi_data) or set EVAHPX_MPI_PREFIX"
 for w in mpicc mpicxx; do
     [ -x "$mpi_prefix/bin/$w" ] || die "$mpi_prefix/bin/$w not found: $mpi_prefix is not an MPI installation (see docs/install.md to install the measuring MPI)"
 done
-[ -f "$patch_file" ] || die "patch $patch_file is missing (incomplete checkout of EduHPX?)"
+[ -f "$patch_file" ] || die "patch $patch_file is missing (incomplete checkout of EvaHPX?)"
 task_patch=$here/../patches/hpx-task-trace-${HPX_COMMIT:0:8}.patch
 if [ "$task_trace" = 1 ]; then
-    [ -f "$task_patch" ] || die "patch $task_patch is missing (incomplete checkout of EduHPX?)"
+    [ -f "$task_patch" ] || die "patch $task_patch is missing (incomplete checkout of EvaHPX?)"
     trace_hooks=ON
 else
     trace_hooks=OFF
@@ -135,7 +135,7 @@ fi
 
 own_build_dir=0
 if [ -z "$build_dir" ]; then
-    build_dir=$(mktemp -d "${TMPDIR:-/tmp}/eduhpx-hpx-build.XXXXXX")
+    build_dir=$(mktemp -d "${TMPDIR:-/tmp}/evahpx-hpx-build.XXXXXX")
     own_build_dir=1
 else
     mkdir -p "$build_dir"
@@ -236,7 +236,7 @@ if [ -n "$core" ] && command -v nm >/dev/null 2>&1; then
     fi
 fi
 
-mkdir -p "$prefix/share/eduhpx"
+mkdir -p "$prefix/share/evahpx"
 {
     echo "hpx_commit=$HPX_COMMIT"
     echo "patch=$(basename "$patch_file") sha256=$(sha256 "$patch_file")"
@@ -245,16 +245,16 @@ mkdir -p "$prefix/share/eduhpx"
     echo "boost=$BOOST_VERSION"
     echo "task_trace=$task_trace"
     echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} > "$prefix/share/eduhpx/hpx-build-info.txt"
+} > "$prefix/share/evahpx/hpx-build-info.txt"
 
 if [ "$keep_build" = 0 ] && [ "$own_build_dir" = 1 ]; then rm -rf "$build_dir"; else info "build directory kept: $build_dir"; fi
 
 cat <<DONE
 
-HPX is installed in $prefix  (commit ${HPX_COMMIT:0:8} with the EduHPX parcel log).
+HPX is installed in $prefix  (commit ${HPX_COMMIT:0:8} with the EvaHPX parcel log).
 To build your program against it:
     cmake ... -DHPX_DIR=$hpx_dir -DMPI_CXX_COMPILER=$mpi_prefix/bin/mpicxx
-To run it (eduhpx-run sets this for you):
+To run it (evahpx-run sets this for you):
     export LD_LIBRARY_PATH=$libdir:$mpi_prefix/lib:\$LD_LIBRARY_PATH
     export HPX_PARCEL_LOG=<dir>/parcels     # writes <dir>/parcels.loc<rank>.csv per process
     export HPX_PARCEL_LOG_MAX_MB=2048       # size cap per process (optional)

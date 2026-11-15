@@ -264,7 +264,7 @@ Item {
             source: "#Cone"
             property int edgeIndex: bar.edgeIndex
             pickable: true
-            position: bar.b.minus(bar.dir.times(bar.head / 2))
+            position: bar.b.minus(bar.dir.times(bar.head))      // the cone of Qt Quick 3D starts at its origin (the base) and ends one height later
             rotation: bar.rot
             scale: Qt.vector3d(bar.radius * 2.3 / 50, bar.head / 100, bar.radius * 2.3 / 50)
             materials: DefaultMaterial {
@@ -401,9 +401,10 @@ Item {
                 readonly property vector3d pc: root.layout.pos[modelData.c] || Qt.vector3d(0, 0, 0)
                 readonly property vector3d d: pc.minus(pa)
                 readonly property real unit: root.layout.size * 0.075
-                // sideways direction, perpendicular to the edge and to the vertical
+                // sideways direction, perpendicular to the edge and to the line of sight (the start view looks along the z axis):
+                // the lines of an edge then lie next to each other in the picture and do not run across each other's arrow heads
                 readonly property vector3d side: {
-                    const s = Qt.vector3d(-d.z, 0, d.x);
+                    const s = Qt.vector3d(d.y, -d.x, 0);
                     return s.length() > 0.001 ? s.normalized() : Qt.vector3d(1, 0, 0);
                 }
                 readonly property bool hot: root.hover === index
@@ -412,13 +413,23 @@ Item {
                 readonly property real alpha: root.selected >= 0 ? (touches || hot ? 1 : 0.12) : ((hot || onPath || !root.crit) ? 1 : 0.2)
                 readonly property real r0: root.layout.size * 0.5
                 readonly property vector3d u: d.times(1 / Math.max(d.length(), 1))
-                // the lines start and end at the surface of the cubes
-                readonly property vector3d s0: pa.plus(u.times(r0))
-                readonly property vector3d s1: pc.minus(u.times(r0))
-                // the data goes from dFrom to dTo, the request the other way
+                // The lines start and end at the surface of the cubes. The cubes are not turned, so the surface is r0 away from the
+                // centre only along an axis: for a slanted line it is further (up to 1.7 times), and a line of the length r0 would end
+                // inside the cube with its arrow head hidden. A line that is moved sideways by off leaves the cube at the first face it meets.
+                function leave(off, v) {
+                    let t = 1e9;
+                    const o = [off.x, off.y, off.z], w = [v.x, v.y, v.z];
+                    for (let i = 0; i < 3; ++i)
+                        if (Math.abs(w[i]) > 1e-6)
+                            t = Math.min(t, ((w[i] > 0 ? r0 : -r0) - o[i]) / w[i]);
+                    return Math.max(t, 0);
+                }
+                function atParent(off) { return pa.plus(off).plus(u.times(leave(off, u))); }
+                function atChild(off) { return pc.plus(off).minus(u.times(leave(off, u.times(-1)))); }
+                // the data goes from "from" to "to", the request the other way
                 readonly property bool up: modelData.up === true
-                readonly property vector3d dFrom: up ? s1 : s0
-                readonly property vector3d dTo: up ? s0 : s1
+                function from(off) { return up ? atChild(off) : atParent(off); }
+                function to(off) { return up ? atParent(off) : atChild(off); }
                 readonly property real wData: root.layout.size * (0.032 + Math.min(Math.sqrt(modelData.data.size) / 150, 2) * 0.007) * (hot || onPath ? 1.15 : 1)
                 readonly property real wReq: root.layout.size * 0.02 * (hot || onPath ? 1.15 : 1)
                 readonly property bool hasReq: modelData.req !== undefined && modelData.req !== null
@@ -428,8 +439,8 @@ Item {
                 // the critical path: a gold band behind the lines of the edge
                 Bar {
                     visible: edgeNode.onPath
-                    a: edgeNode.dFrom.plus(edgeNode.side.times(edgeNode.unit * 0.8))
-                    b: edgeNode.dTo.plus(edgeNode.side.times(edgeNode.unit * 0.8))
+                    a: edgeNode.from(edgeNode.side.times(edgeNode.unit * 0.8))
+                    b: edgeNode.to(edgeNode.side.times(edgeNode.unit * 0.8))
                     radius: edgeNode.unit * 3.2
                     arrow: false
                     color: "#ffc400"
@@ -439,8 +450,8 @@ Item {
                 // data, sent: green
                 Bar {
                     visible: root.showSend
-                    a: edgeNode.dFrom.plus(edgeNode.side.times(edgeNode.unit * 2.4))
-                    b: edgeNode.dTo.plus(edgeNode.side.times(edgeNode.unit * 2.4))
+                    a: edgeNode.from(edgeNode.side.times(edgeNode.unit * 2.4))
+                    b: edgeNode.to(edgeNode.side.times(edgeNode.unit * 2.4))
                     radius: edgeNode.wData
                     color: edgeNode.sendColor
                     alpha: edgeNode.alpha
@@ -450,8 +461,8 @@ Item {
                 // data, received: red, from the receiver to the sender
                 Bar {
                     visible: root.showRecv
-                    a: edgeNode.dTo.plus(edgeNode.side.times(edgeNode.unit * 0.8))
-                    b: edgeNode.dFrom.plus(edgeNode.side.times(edgeNode.unit * 0.8))
+                    a: edgeNode.to(edgeNode.side.times(edgeNode.unit * 0.8))
+                    b: edgeNode.from(edgeNode.side.times(edgeNode.unit * 0.8))
                     radius: edgeNode.wData
                     color: edgeNode.recvColor
                     alpha: edgeNode.alpha
@@ -461,8 +472,8 @@ Item {
                 // request (or confirmation), sent: green
                 Bar {
                     visible: root.showSend && edgeNode.hasReq
-                    a: edgeNode.dTo.plus(edgeNode.side.times(-edgeNode.unit * 0.8))
-                    b: edgeNode.dFrom.plus(edgeNode.side.times(-edgeNode.unit * 0.8))
+                    a: edgeNode.to(edgeNode.side.times(-edgeNode.unit * 0.8))
+                    b: edgeNode.from(edgeNode.side.times(-edgeNode.unit * 0.8))
                     radius: edgeNode.wReq
                     color: edgeNode.sendColor
                     alpha: edgeNode.alpha
@@ -472,8 +483,8 @@ Item {
                 // request, received: red, from the receiver to the sender
                 Bar {
                     visible: root.showRecv && edgeNode.hasReq
-                    a: edgeNode.dFrom.plus(edgeNode.side.times(-edgeNode.unit * 2.4))
-                    b: edgeNode.dTo.plus(edgeNode.side.times(-edgeNode.unit * 2.4))
+                    a: edgeNode.from(edgeNode.side.times(-edgeNode.unit * 2.4))
+                    b: edgeNode.to(edgeNode.side.times(-edgeNode.unit * 2.4))
                     radius: edgeNode.wReq
                     color: edgeNode.recvColor
                     alpha: edgeNode.alpha

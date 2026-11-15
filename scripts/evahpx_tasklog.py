@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""eduhpx_tasklog.py: read the task log of one locality (<prefix>.tasks.loc<rank>.bin, written by HPX with HPX_TASK_LOG).
+"""evahpx_tasklog.py: read the task log of one locality (<prefix>.tasks.loc<rank>.bin, written by HPX with HPX_TASK_LOG).
 
-    eduhpx_tasklog.py FILE [FILE ...]        summary: tasks, worker threads, durations, how the slices end
-    from eduhpx_tasklog import read          the records as Python objects, see read()
+    evahpx_tasklog.py FILE [FILE ...]        summary: tasks, worker threads, durations, how the slices end
+    from evahpx_tasklog import read          the records as Python objects, see read()
 
 The format is described in docs/task_log_format.md. Standard library only."""
 import collections
@@ -37,7 +37,7 @@ class TaskLog:
 def read(path):
     data = open(path, "rb").read()
     if len(data) < 64 or data[:8] != b"EDUHPXK1":
-        raise ValueError("%s: not an EduHPX task log" % path)
+        raise ValueError("%s: not an EvaHPX task log" % path)
     _magic, version, rec_size, rank, pid, names_at, t0, w0, t1, w1 = _HEADER.unpack_from(data, 0)
     if version != 1 or rec_size != _REC.size:
         raise ValueError("%s: unsupported task log version %d (record size %d)" % (path, version, rec_size))

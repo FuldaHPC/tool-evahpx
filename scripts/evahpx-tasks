@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""eduhpx-tasks RUN_DIR|FILE... [-o tasks.csv] [--run NAME] [--min-us N]
+"""evahpx-tasks RUN_DIR|FILE... [-o tasks.csv] [--run NAME] [--min-us N]
 
-Makes the task file of EduHPX (CSV, see docs/task_file_format.md) out of the task logs of HPX (HPX_TASK_LOG, see
+Makes the task file of EvaHPX (CSV, see docs/task_file_format.md) out of the task logs of HPX (HPX_TASK_LOG, see
 docs/task_log_format.md): one row for every time a task ran on a worker thread, and the links between the tasks.
-  RUN_DIR      the run directory of eduhpx-run: all <prefix>.tasks.loc<rank>.bin in it. If it holds clock_offsets.csv and the
-               MPI logs (eduhpx.mpi.<rank>.bin) the times of the other nodes are corrected, as eduhpx-merge does for run.csv
+  RUN_DIR      the run directory of evahpx-run: all <prefix>.tasks.loc<rank>.bin in it. If it holds clock_offsets.csv and the
+               MPI logs (eduhpx.mpi.<rank>.bin) the times of the other nodes are corrected, as evahpx-merge does for run.csv
   FILE...      task logs; --clock-offsets FILE and --nodes 0=nodeA,1=nodeB can give the corrections by hand
 Standard library only."""
 import argparse
@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import eduhpx_tasklog as tl  # noqa: E402
+import evahpx_tasklog as tl  # noqa: E402
 
 
 def node_of_rank(run_dir, rank):
@@ -62,7 +62,7 @@ def main():
         else:
             paths.append(p)
     if not paths:
-        sys.exit("eduhpx-tasks: no task logs (*.tasks.loc<rank>.bin) found")
+        sys.exit("evahpx-tasks: no task logs (*.tasks.loc<rank>.bin) found")
     out = a.output or os.path.join(run_dir or ".", "tasks.csv")
     name = a.run or (os.path.basename(run_dir) if run_dir else os.path.basename(out))
     offsets = {}
@@ -145,11 +145,11 @@ def main():
                 wakes.append((loc, f[1], gid(task), f[0], t_next, wx))
         n_tasks += len(seen)
         if not log.complete:
-            print("eduhpx-tasks: %s was not closed (no names, times not calibrated)" % path, file=sys.stderr)
+            print("evahpx-tasks: %s was not closed (no names, times not calibrated)" % path, file=sys.stderr)
 
     rows.sort(key=lambda r: (r[0], r[1], r[4]))
     with open(out, "w", newline="") as f:
-        f.write("# eduhpx_tasks_csv 1\n")
+        f.write("# evahpx_tasks_csv 1\n")
         f.write("# run=%s localities=%d tasks=%d slices=%d deps=%d steals=%d\n" % (
             name.replace(" ", "_"), len(workers), n_tasks, n_slices, len(deps), len(steals)))
         w = csv.writer(f, lineterminator="\n")
@@ -164,7 +164,7 @@ def main():
             w.writerow(["wake", loc, wf, task, "", us(tf), us(tn), "", "", "", wx])
         for loc, wk, what, task, nm, t0, t1, pid in parcels:      # which thread sent / ran the action of which parcel (the id as in run.csv)
             w.writerow([what, loc, wk, task or "", nm, us(t0), us(t1) if t1 != "" else "", "", "", "", pid])
-    print("eduhpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals, %d parcel records, %d wake-ups" % (
+    print("evahpx-tasks: %s: %d localities, %d tasks in %d slices, %d dependencies, %d steals, %d parcel records, %d wake-ups" % (
         out, len(workers), n_tasks, n_slices, len(deps), len(steals), len(parcels), len(wakes)))
 
 

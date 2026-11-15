@@ -11,7 +11,7 @@ The task log records what the worker threads of one locality do: which task runs
 
 A thread of its own writes the file, in blocks, so that a worker never waits for the disk. If the disk cannot keep up (at most 64 MB of blocks are kept), the blocks that do not fit are not written and counted: a message at the end of the program says how many records were lost (use a local disk, or `HPX_TASK_LOG_SAMPLE=N`).
 
-`scripts/eduhpx_tasklog.py FILE` prints a summary (tasks, worker threads, durations, the names that take the most time).
+`scripts/evahpx_tasklog.py FILE` prints a summary (tasks, worker threads, durations, the names that take the most time).
 
 ## File format (version 1)
 

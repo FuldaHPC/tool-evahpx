@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(EduHPX VERSION 0.0.3 LANGUAGES CXX)
+project(EvaHPX VERSION 0.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,10 +8,10 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Quick QuickControls2)
 # the 3D view of the tree (qml/Tree3D.qml) needs Qt Quick 3D (and Qt Shader Tools, which it depends on). Without them the program is
-# built and shows a note in that view. The release builds switch EDUHPX_REQUIRE_QUICK3D on, so that a missing module stops the build
+# built and shows a note in that view. The release builds switch EVAHPX_REQUIRE_QUICK3D on, so that a missing module stops the build
 # instead of giving a program without the 3D view.
-option(EDUHPX_REQUIRE_QUICK3D "stop if Qt Quick 3D is not found" OFF)
-if(EDUHPX_REQUIRE_QUICK3D)
+option(EVAHPX_REQUIRE_QUICK3D "stop if Qt Quick 3D is not found" OFF)
+if(EVAHPX_REQUIRE_QUICK3D)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Quick3D)
 else()
     find_package(Qt6 6.5 QUIET OPTIONAL_COMPONENTS Quick3D)
@@ -22,7 +22,7 @@ endif()
 
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_executable(eduhpx
+qt_add_executable(evahpx
     src/main.cpp
 )
 
@@ -40,8 +40,8 @@ set_source_files_properties(qml/Tree3D.qml PROPERTIES QT_RESOURCE_ALIAS Tree3D.q
 set_source_files_properties(qml/ThreadView.qml PROPERTIES QT_RESOURCE_ALIAS ThreadView.qml)
 set_source_files_properties(qml/MatrixView.qml PROPERTIES QT_RESOURCE_ALIAS MatrixView.qml)
 
-qt_add_qml_module(eduhpx
-    URI EduHPX
+qt_add_qml_module(evahpx
+    URI EvaHPX
     VERSION 1.0
     QML_FILES
         qml/Main.qml
@@ -62,18 +62,18 @@ qt_add_qml_module(eduhpx
         ${EXAMPLE_FILES}
 )
 
-target_include_directories(eduhpx PRIVATE src)
-target_link_libraries(eduhpx PRIVATE Qt6::Core Qt6::Gui Qt6::Quick Qt6::QuickControls2)
+target_include_directories(evahpx PRIVATE src)
+target_link_libraries(evahpx PRIVATE Qt6::Core Qt6::Gui Qt6::Quick Qt6::QuickControls2)
 if(TARGET Qt6::Quick3D)
-    target_link_libraries(eduhpx PRIVATE Qt6::Quick3D)    # makes the deploy tools bundle it
+    target_link_libraries(evahpx PRIVATE Qt6::Quick3D)    # makes the deploy tools bundle it
 endif()
 
-set_source_files_properties(assets/EduHPX.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
-target_sources(eduhpx PRIVATE assets/EduHPX.icns)
+set_source_files_properties(assets/EvaHPX.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+target_sources(evahpx PRIVATE assets/EvaHPX.icns)
 
-set_target_properties(eduhpx PROPERTIES
-    MACOSX_BUNDLE_ICON_FILE EduHPX.icns
-    MACOSX_BUNDLE_GUI_IDENTIFIER org.eduhpx.eduhpx
+set_target_properties(evahpx PROPERTIES
+    MACOSX_BUNDLE_ICON_FILE EvaHPX.icns
+    MACOSX_BUNDLE_GUI_IDENTIFIER org.evahpx.evahpx
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE TRUE
@@ -81,6 +81,6 @@ set_target_properties(eduhpx PROPERTIES
 )
 
 include(GNUInstallDirs)
-install(TARGETS eduhpx BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS evahpx BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # the example run files are built into the app (File > Examples); they are also installed as plain files
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../examples/ DESTINATION ${CMAKE_INSTALL_DATADIR}/eduhpx/examples FILES_MATCHING PATTERN "*.csv" PATTERN "README.md")
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../examples/ DESTINATION ${CMAKE_INSTALL_DATADIR}/evahpx/examples FILES_MATCHING PATTERN "*.csv" PATTERN "README.md")

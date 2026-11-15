@@ -1,6 +1,6 @@
-# EduHPX task file, format 1
+# EvaHPX task file, format 1
 
-A text file, UTF-8, made by `scripts/eduhpx-tasks` from the task logs of HPX ([task_log_format.md](task_log_format.md)). It holds what the worker threads of one or more localities did. The first line must be `# eduhpx_tasks_csv 1`. The second line holds `key=value` pairs separated by blanks (`run`, `localities`, `tasks`, `slices`, `deps`, `steals`). The first line that is not a comment is the column header. Fields are separated by commas; a field with a comma or a quote is in double quotes (`""` is a quote), as in RFC 4180. Columns are found by name. All times are microseconds since the epoch, on the clock of the first node (nodes corrected as in the run file).
+A text file, UTF-8, made by `scripts/evahpx-tasks` from the task logs of HPX ([task_log_format.md](task_log_format.md)). It holds what the worker threads of one or more localities did. The first line must be `# evahpx_tasks_csv 1`. The second line holds `key=value` pairs separated by blanks (`run`, `localities`, `tasks`, `slices`, `deps`, `steals`). The first line that is not a comment is the column header. Fields are separated by commas; a field with a comma or a quote is in double quotes (`""` is a quote), as in RFC 4180. Columns are found by name. All times are microseconds since the epoch, on the clock of the first node (nodes corrected as in the run file).
 
 | column | meaning |
 |---|---|
@@ -21,4 +21,4 @@ A text file, UTF-8, made by `scripts/eduhpx-tasks` from the task logs of HPX ([t
 * **`dep`**: a future (`.then()`) that the task `task` fulfilled at `t0` was used by the task `peer` at `t1`. HPX only reports these for `.then()`-style continuations; for `dataflow` the link between the tasks is the `parent` of the task that `dataflow` starts (it is started by the task that fulfilled the last input).
 * **`steal`**: `worker` took the task `task` from the queue of the worker `peer` at `t0`.
 
-`eduhpx-tasks RUN_DIR` (or the task logs given one by one) writes it; `eduhpx-run --tasks` does that at the end of a run. The viewer opens it like a run file and shows one row per worker thread, see [the viewer](../gui/README.md).
+`evahpx-tasks RUN_DIR` (or the task logs given one by one) writes it; `evahpx-run --tasks` does that at the end of a run. The viewer opens it like a run file and shows one row per worker thread, see [the viewer](../gui/README.md).

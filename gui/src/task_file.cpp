@@ -71,7 +71,8 @@ bool TaskFile::isTaskFile(const QUrl &url) const
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly))
         return false;
-    return f.readLine(64).startsWith("# eduhpx_tasks_csv");
+    const QByteArray head = f.readLine(64);
+    return head.startsWith("# evahpx_tasks_csv") || head.startsWith("# eduhpx_tasks_csv");    // eduhpx: files written before the rename
 }
 
 QUrl TaskFile::companion(const QUrl &url) const
@@ -165,7 +166,7 @@ bool TaskFile::load(const QUrl &url)
         if (line.isEmpty())
             continue;
         if (line[0] == '#') {
-            if (line.startsWith("# eduhpx_tasks_csv")) {
+            if (line.startsWith("# evahpx_tasks_csv") || line.startsWith("# eduhpx_tasks_csv")) {
                 if (line.mid(18).trimmed().toInt() != 1)
                     return fail(tr("%1: format version %2 is not supported").arg(shown, QString::fromUtf8(line.mid(18).trimmed()))), false;
                 versionSeen = true;
@@ -178,7 +179,7 @@ bool TaskFile::load(const QUrl &url)
             continue;
         }
         if (!versionSeen)
-            return fail(tr("%1 is not an EduHPX task file (it must start with \"# eduhpx_tasks_csv 1\")").arg(shown)), false;
+            return fail(tr("%1 is not an EvaHPX task file (it must start with \"# evahpx_tasks_csv 1\")").arg(shown)), false;
         char *fields[kMaxFields];
         const int n = splitInPlace(line.data(), fields, kMaxFields);
         if (n < 0)
@@ -236,7 +237,7 @@ bool TaskFile::load(const QUrl &url)
         }
     }
     if (!versionSeen)
-        return fail(tr("%1 is not an EduHPX task file (it must start with \"# eduhpx_tasks_csv 1\")").arg(shown)), false;
+        return fail(tr("%1 is not an EvaHPX task file (it must start with \"# evahpx_tasks_csv 1\")").arg(shown)), false;
     if (rows.empty())
         return fail(tr("%1 holds no task").arg(shown)), false;
 

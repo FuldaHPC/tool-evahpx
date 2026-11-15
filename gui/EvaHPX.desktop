@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=EduHPX
+Name=EvaHPX
 GenericName=HPX and MPI communication viewer
 Comment=HPX parcels and MPI messages on one timeline
-Exec=eduhpx
-Icon=EduHPX
+Exec=evahpx
+Icon=EvaHPX
 Categories=Development;Utility;
 Terminal=false
