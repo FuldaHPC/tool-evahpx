@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Core of eduhpx-merge (vendored from the EduHPX prototype, tools/merge_hpx_run.py): parcel log + MPI rows -> JSON.
-Used through eduhpx-merge; the Tracy input is kept for old runs.
+"""Core of evahpx-merge (vendored from the EvaHPX prototype, tools/merge_hpx_run.py): parcel log + MPI rows -> JSON.
+Used through evahpx-merge; the Tracy input is kept for old runs.
 
 Merge the Tracy parcel messages and the EduMPI rows of one HPX run into one JSON file.
 

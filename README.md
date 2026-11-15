@@ -1,8 +1,8 @@
-<p align="center"><img src="gui/assets/logo.png" alt="EduHPX" width="260"></p>
+<p align="center"><img src="gui/assets/logo.png" alt="EvaHPX" width="260"></p>
 
-# EduHPX
+# EvaHPX
 
-EduHPX shows what happens inside an [HPX](https://github.com/STEllAR-GROUP/hpx) program and in the MPI messages below it,
+EvaHPX shows what happens inside an [HPX](https://github.com/STEllAR-GROUP/hpx) program and in the MPI messages below it,
 on **one timeline**: when HPX prepares a parcel, when MPI sends and receives it, when HPX picks it up and runs the action.
 Collectives (broadcast ...) are grouped, drawn as a tree and analysed along their critical path.
 
@@ -14,9 +14,9 @@ Collectives (broadcast ...) are grouped, drawn as a tree and analysed along thei
 
 *New in 0.0.3, the tree in 3D: a flat broadcast of 64 localities on 8 nodes. Every node of the cluster is a glass cube with its localities inside (the first node bottom left), green lines are sends, red lines are receives (each can be switched off). L#0 on compute-00 sent to all others, so it is green and all others are red. Other views colour the localities by who sent or received the most, or by when the data arrived. Click a cube to look at it; the critical path is shown in gold.*
 
-## Why EduHPX?
+## Why EvaHPX?
 
-EduHPX is the little brother of **EduMPI Suite**: [EduMPI](https://github.com/AnnaLena77/EduMPI) (an Open MPI that records
+EvaHPX is the little brother of **EduMPI Suite**: [EduMPI](https://github.com/AnnaLena77/EduMPI) (an Open MPI that records
 MPI communication), EduStore (its database, a folder in the EduMPI repo) and the
 [EduMPI GUI](https://github.com/AnnaLena77/EduMPI_GUI).
 
@@ -25,7 +25,7 @@ sends it for you, over TCP, LCI or MPI. That is convenient, but when a program g
 lost in HPX (waiting, scheduling, preparing the parcel) or in the transport below it (the MPI send, the receive).
 
 [HPX's Tracy integration](https://v4xsh.dev/blog/gsoc-2026-hpx-tracy/) (Google Summer of Code 2026) shows tasks, threads and the parcels of each locality, but not the MPI messages below them. EduMPI shows the MPI messages,
-but knows nothing about parcels. **EduHPX puts both on one timeline**: for every parcel you see what HPX did and what MPI did.
+but knows nothing about parcels. **EvaHPX puts both on one timeline**: for every parcel you see what HPX did and what MPI did.
 
 ## Download
 
@@ -43,19 +43,19 @@ All releases: <https://github.com/FuldaHPC/tool-eduhpx/releases>. What changed: 
 
 **macOS: the first start.** The app is not signed with an Apple certificate, so macOS blocks it once (it is not damaged):
 
-- macOS 14 and older: right click on `EduHPX.app` > *Open* > *Open*.
+- macOS 14 and older: right click on `EvaHPX.app` > *Open* > *Open*.
 - macOS 15 and newer: double click the app once (it is blocked), then *System Settings > Privacy & Security*, scroll down
-  to the message about EduHPX and click *Open Anyway*.
-- Or in the Terminal: `xattr -dr com.apple.quarantine /Applications/EduHPX.app`.
+  to the message about EvaHPX and click *Open Anyway*.
+- Or in the Terminal: `xattr -dr com.apple.quarantine /Applications/EvaHPX.app`.
 
-Copy `EduHPX.app` from the dmg to *Applications* first. This is needed only once.
+Copy `EvaHPX.app` from the dmg to *Applications* first. This is needed only once.
 
 ## The parts
 
 | Folder | What it is |
 |---|---|
 | [`gui/`](gui/) | The viewer (Qt 6). Opens a run file and shows the timeline. Runs on macOS, Linux and Windows. [Details and a tour of the window](gui/README.md) |
-| [`scripts/`](scripts/) | `install-mpi.sh` (measuring MPI), `install-hpx.sh` (patched HPX), `eduhpx-run` (run a program, get `run.csv`) and `eduhpx-merge`. Tested on a Linux cluster with Slurm. [What works and what is missing](scripts/README.md) |
+| [`scripts/`](scripts/) | `install-mpi.sh` (measuring MPI), `install-hpx.sh` (patched HPX), `evahpx-run` (run a program, get `run.csv`) and `evahpx-merge`. Tested on a Linux cluster with Slurm. [What works and what is missing](scripts/README.md) |
 | [`examples/`](examples/) | Ready-made run files to try the viewer |
 | [`sample-app/`](sample-app/) | A small HPX program (one collective, flat or hierarchical) to try the whole chain; the examples were made with it |
 | [`docs/`](docs/) | **[Trace an HPX program: install, run, look at the result](docs/tracing_guide.md)**, format of the run file and of the raw MPI log, HPX install notes, the measuring MPI as a tarball |
@@ -66,11 +66,11 @@ Copy `EduHPX.app` from the dmg to *Applications* first. This is needed only once
    flat and as a tree on 16 to 64 localities. Or open a file from `examples/`.
 2. **Measure your own program** (Linux, tested on a cluster with Slurm and Open MPI; the complete description with all options,
    a Slurm script and troubleshooting is the **[tracing guide](docs/tracing_guide.md)**):
-   1. Measuring MPI, from the tarball of the release: `scripts/install-mpi.sh --prefix ~/eduhpx_mpi` ([how it is built and updated](docs/mpi_tarball.md)).
-   2. Patched HPX: `scripts/install-hpx.sh --mpi-prefix ~/eduhpx_mpi --prefix ~/eduhpx_hpx` ([details](docs/install.md)).
+   1. Measuring MPI, from the tarball of the release: `scripts/install-mpi.sh --prefix ~/evahpx_mpi` ([how it is built and updated](docs/mpi_tarball.md)).
+   2. Patched HPX: `scripts/install-hpx.sh --mpi-prefix ~/evahpx_mpi --prefix ~/evahpx_hpx` ([details](docs/install.md)).
    3. Build your program against that HPX (the sample in [`sample-app/`](sample-app/) shows how).
-   4. Run: `scripts/eduhpx-run --mpi ~/eduhpx_mpi --hpx ~/eduhpx_hpx --out my_run -- mpirun -np 16 ./app ...`, then open
-      `my_run/run.csv` with EduHPX ([details](scripts/README.md)).
+   4. Run: `scripts/evahpx-run --mpi ~/evahpx_mpi --hpx ~/evahpx_hpx --out my_run -- mpirun -np 16 ./app ...`, then open
+      `my_run/run.csv` with EvaHPX ([details](scripts/README.md)).
 
 **Status (2026-11-08):** the viewer is released (0.0.3). The whole chain from a program to `run.csv` was tested on one
 cluster (4 nodes, 16 localities, all HPX collectives, flat and hierarchical); macOS as a measuring system and runs without Slurm
@@ -87,4 +87,4 @@ are not tested yet.
 ## Licence
 
 BSD-3-Clause, see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-EduHPX is part of the Edu* tools for visualising parallel programs, like EduMPI.
+EvaHPX is part of the Edu* tools for visualising parallel programs, like EduMPI.

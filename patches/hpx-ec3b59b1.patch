@@ -5,7 +5,7 @@
              std::uint64_t source_locality_id,
              std::uint64_t source_thread_id) noexcept;
 +
-+        // EduHPX parcel log (HPX_PARCEL_LOG): a parcel was handed to the send path, and the
++        // EvaHPX parcel log (HPX_PARCEL_LOG): a parcel was handed to the send path, and the
 +        // action of a received parcel was scheduled
 +        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void parcel_created_impl(
 +            std::uint64_t tag_msb, std::uint64_t tag_lsb,
@@ -36,7 +36,7 @@
  
 +
 +// ---------------------------------------------------------------------------------------------
-+// EduHPX: parcel log that needs no profiler. With HPX_PARCEL_LOG=<prefix> every parcel event is
++// EvaHPX: parcel log that needs no profiler. With HPX_PARCEL_LOG=<prefix> every parcel event is
 +// recorded with the wall clock (microseconds since the epoch) and appended in blocks to the file
 +// <prefix>.loc<rank>.csv (rank: OMPI_COMM_WORLD_RANK or PMIX_RANK, else 0). The file is created
 +// when the first block is written, an old file with the same name is overwritten.

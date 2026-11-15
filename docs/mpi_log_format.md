@@ -1,4 +1,4 @@
-# EduHPX MPI log format, version 1
+# EvaHPX MPI log format, version 1
 
 The measuring MPI (branch `eduhpx_mpi_data` of EduMPI) writes one binary file per rank:
 `$EDUHPX_MPI_LOG_DIR/eduhpx.mpi.<rank>.bin` (the current directory if the variable is not set). The file is written when
