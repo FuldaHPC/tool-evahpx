@@ -28,7 +28,7 @@ jobs:
 
       - name: Configure and build
         run: |
-          cmake -G "Ninja" -S gui -B windows-build -DCMAKE_BUILD_TYPE=Release -DEDUHPX_REQUIRE_QUICK3D=ON 2>&1 | Tee-Object -FilePath build.log
+          cmake -G "Ninja" -S gui -B windows-build -DCMAKE_BUILD_TYPE=Release -DEVAHPX_REQUIRE_QUICK3D=ON 2>&1 | Tee-Object -FilePath build.log
           $rc = $LASTEXITCODE
           if ($rc -eq 0) { cmake --build windows-build 2>&1 | Tee-Object -FilePath build.log -Append; $rc = $LASTEXITCODE }
           if ($rc -ne 0) {
@@ -39,7 +39,7 @@ jobs:
 
       - name: Collect the program, Qt and the examples (windeployqt)
         run: |
-          $out = windeployqt --qmldir gui/qml --dir release windows-build/eduhpx.exe 2>&1 | ForEach-Object { "$_" }
+          $out = windeployqt --qmldir gui/qml --dir release windows-build/evahpx.exe 2>&1 | ForEach-Object { "$_" }
           $rc = $LASTEXITCODE
           $out | Write-Output
           if ($rc -ne 0) {
@@ -47,7 +47,7 @@ jobs:
             Write-Output "::error title=windeployqt failed::$m"
             exit 1
           }
-          move windows-build/eduhpx.exe release\
+          move windows-build/evahpx.exe release\
           mkdir release\examples
           copy examples\*.csv release\examples\
           copy examples\README.md release\examples\
@@ -55,10 +55,10 @@ jobs:
           copy THIRD_PARTY_NOTICES.md release\
 
       - name: Zip
-        run: Compress-Archive -Path release\* -DestinationPath EduHPX_${{ env.APP_VERSION }}-windows.zip
+        run: Compress-Archive -Path release\* -DestinationPath EvaHPX_${{ env.APP_VERSION }}-windows.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EduHPX-Windows
-          path: EduHPX_${{ env.APP_VERSION }}-windows.zip
+          name: EvaHPX-Windows
+          path: EvaHPX_${{ env.APP_VERSION }}-windows.zip

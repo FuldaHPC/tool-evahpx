@@ -35,7 +35,7 @@ jobs:
         run: |
           set -o pipefail
           fail() { echo "::error title=build failed::$(grep -E 'error|Error|undefined|No such|not found' build.log | head -12 | sed 's/%/%25/g' | paste -sd '|' -)"; exit 1; }
-          cmake -S gui -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DEDUHPX_REQUIRE_QUICK3D=ON 2>&1 | tee build.log || fail
+          cmake -S gui -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DEVAHPX_REQUIRE_QUICK3D=ON 2>&1 | tee build.log || fail
           cmake --build build -j$(nproc) 2>&1 | tee -a build.log || fail
 
       - name: Create AppDir with executable and examples
@@ -43,7 +43,7 @@ jobs:
 
       - name: Download and run linuxdeploy
         run: |
-          # EduHPX does not use SQL: keep the Qt SQL drivers (which need database libraries) out of the AppImage
+          # EvaHPX does not use SQL: keep the Qt SQL drivers (which need database libraries) out of the AppImage
           rm -rf "${QT_PLUGIN_PATH}/sqldrivers" || true
           # GitHub sometimes answers with a server error for a moment: try again, and say which download failed
           for f in linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
@@ -52,18 +52,18 @@ jobs:
               || { echo "::error title=download failed::https://github.com/$f"; exit 1; }
           done
           chmod +x linuxdeploy*.AppImage
-          cp gui/assets/icon_256.png EduHPX.png      # the icon must be named like Icon= in the .desktop file
+          cp gui/assets/icon_256.png EvaHPX.png      # the icon must be named like Icon= in the .desktop file
           export APPIMAGE_EXTRACT_AND_RUN=1
           export QML_SOURCES_PATHS=${{ github.workspace }}/gui/qml
           export DEPLOY_PLATFORM_THEMES=true
           export LINUXDEPLOY_OUTPUT_VERSION=${APP_VERSION}
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt \
-            -d gui/EduHPX.desktop -i EduHPX.png --output appimage
+            -d gui/EvaHPX.desktop -i EvaHPX.png --output appimage
           ls -l *.AppImage
-          mv EduHPX-*.AppImage EduHPX_${APP_VERSION}-x86_64.AppImage
+          mv EvaHPX-*.AppImage EvaHPX_${APP_VERSION}-x86_64.AppImage
 
       - name: Upload AppImage as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EduHPX-AppImage
-          path: EduHPX_${{ env.APP_VERSION }}-x86_64.AppImage
+          name: EvaHPX-AppImage
+          path: EvaHPX_${{ env.APP_VERSION }}-x86_64.AppImage

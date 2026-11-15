@@ -1,6 +1,6 @@
-# Builds EduHPX for Linux, macOS and Windows and publishes the files as a GitHub release.
+# Builds EvaHPX for Linux, macOS and Windows and publishes the files as a GitHub release.
 # Runs on every push to the branch "deploy". To release: merge main into deploy and push.
-name: Deploy EduHPX
+name: Deploy EvaHPX
 
 env:
   APP_VERSION: 0.0.3
@@ -40,7 +40,7 @@ jobs:
       - name: Example run files as one zip
         run: |
           cd examples
-          zip -r ../release-files/EduHPX_${APP_VERSION}_examples.zip *.csv README.md
+          zip -r ../release-files/EvaHPX_${APP_VERSION}_examples.zip *.csv README.md
 
       - name: List the release files
         run: ls -l release-files
@@ -49,7 +49,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
-          name: EduHPX_${{ env.APP_VERSION }}
+          name: EvaHPX_${{ env.APP_VERSION }}
           body_path: docs/release-notes/${{ env.APP_VERSION }}.md
           files: release-files/*
           fail_on_unmatched_files: true

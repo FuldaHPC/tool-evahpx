@@ -22,5 +22,5 @@ already has one) the app opens with a double click. Steps once:
 | `MACOS_NOTARY_TEAM_ID` | the 10-character team id |
 
 As soon as `MACOS_CERT_P12` exists, `macos.yaml` signs with the hardened runtime
-(`EduHPX.entitlements`), notarizes the app with Apple and staples the ticket. Without the secrets nothing changes.
+(`EvaHPX.entitlements`), notarizes the app with Apple and staples the ticket. Without the secrets nothing changes.
 **These steps could not be tested yet** (no account at hand): the first run with secrets may need small fixes.
