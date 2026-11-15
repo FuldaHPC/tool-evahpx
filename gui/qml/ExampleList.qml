@@ -7,7 +7,7 @@ import QtQuick.Layouts
 ColumnLayout {
     id: root
     signal chosen(string file)
-    readonly property string dir: "qrc:/qt/qml/EduHPX/examples/"
+    readonly property string dir: "qrc:/qt/qml/EvaHPX/examples/"
     property var collectives: []
     spacing: 12
 

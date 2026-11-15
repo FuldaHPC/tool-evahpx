@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# EduHPX: build and install the measuring MPI.
+# EvaHPX: build and install the measuring MPI.
 #
 # The measuring MPI is Open MPI with the EduMPI instrumentation (branch eduhpx_mpi_data of the EduMPI repository). It writes
 # one binary file per rank (eduhpx.mpi.<rank>.bin) into $EDUHPX_MPI_LOG_DIR. It comes as a source tarball; this script
 # checks the checksum, builds it from the unpacked archive, installs it and runs a small test.
 #
-#   scripts/install-mpi.sh --prefix ~/eduhpx_mpi [--tarball FILE|URL] [--jobs 16]
+#   scripts/install-mpi.sh --prefix ~/evahpx_mpi [--tarball FILE|URL] [--jobs 16]
 #
 # Needs: a C compiler, make, tar, curl or wget (only to download the tarball). UCX development files only if you want the
 # UCX transport. Linux; the build takes about 35 minutes with 16 cores. Not tested on macOS.
 set -euo pipefail
 
-MPI_NAME=eduhpx_mpi_data-5.0.11rc1-eduhpx1
-MPI_TARBALL_SHA256=64e1324acf5888861e042e5ad05afc351cf6ed2d5a75d667cf0322d01d5fa1d3
-# The tarball is a file of the EduHPX release 0.0.3 (with its .sha256). If you have it already, give it with --tarball FILE.
+MPI_NAME=evahpx_mpi_data-5.0.11rc1-evahpx1
+MPI_TARBALL_SHA256=fec90a7f336e2e3345fa78fb6aa706e33b8c1483f9f51b36618198da380fa558
+# The tarball is a file of the EvaHPX release 0.0.3 (with its .sha256). If you have it already, give it with --tarball FILE.
 MPI_URL=https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/${MPI_NAME}.tar.gz
 
 usage() {
     cat <<USAGE
 usage: install-mpi.sh [options]
-  --prefix DIR        install directory of the measuring MPI  (default ~/eduhpx_mpi)
+  --prefix DIR        install directory of the measuring MPI  (default ~/evahpx_mpi)
   --tarball FILE|URL  the tarball ${MPI_NAME}.tar.gz, a file or a URL (default: the release URL)
   --sha256 HEX        expected checksum of the tarball        (default: the one pinned in this script)
   --jobs N            parallel build jobs                     (default: number of cores)
   --build-dir DIR     build directory                         (default: a new directory in \${TMPDIR:-/tmp}; use a local disk,
                       not a network file system, configure and make are much slower there)
-  --download-dir DIR  where a downloaded tarball is kept      (default ~/.cache/eduhpx)
+  --download-dir DIR  where a downloaded tarball is kept      (default ~/.cache/evahpx)
   --no-test           do not run the test after the install
   --keep-build        do not delete the build directory afterwards
   -h, --help
@@ -36,12 +36,12 @@ USAGE
 die() { echo "install-mpi: $*" >&2; exit 1; }
 info() { echo "install-mpi: $*"; }
 
-prefix=$HOME/eduhpx_mpi
+prefix=$HOME/evahpx_mpi
 tarball=$MPI_URL
 sha_expected=$MPI_TARBALL_SHA256
 jobs=
 build_dir=
-download_dir=$HOME/.cache/eduhpx
+download_dir=$HOME/.cache/evahpx
 run_test=1
 keep_build=0
 
@@ -84,7 +84,7 @@ prefix=$(cd "$prefix" && pwd)
 
 own_build_dir=0
 if [ -z "$build_dir" ]; then
-    build_dir=$(mktemp -d "${TMPDIR:-/tmp}/eduhpx-mpi-build.XXXXXX")
+    build_dir=$(mktemp -d "${TMPDIR:-/tmp}/evahpx-mpi-build.XXXXXX")
     own_build_dir=1
 else
     mkdir -p "$build_dir"
@@ -102,9 +102,9 @@ case $tarball in
         if [ ! -f "$file" ] || [ "$(sha256 "$file")" != "$sha_expected" ]; then
             info "downloading $tarball"
             if command -v curl >/dev/null 2>&1; then
-                curl -fsSL -o "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EduHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
+                curl -fsSL --retry 5 --retry-delay 5 -o "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EvaHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
             elif command -v wget >/dev/null 2>&1; then
-                wget -q -O "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EduHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
+                wget -q --tries=5 --waitretry=5 -O "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EvaHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
             else
                 die "neither curl nor wget found (or give the tarball as a file with --tarball FILE)"
             fi
@@ -123,8 +123,8 @@ info "checksum ok"
 src=$build_dir/src
 rm -rf "$src"; mkdir -p "$src"
 tar xzf "$file" -C "$src" --strip-components=1
-[ -x "$src/configure" ] || die "$file does not contain a configure script: it is not the EduHPX measuring MPI tarball"
-[ -f "$src/ompi/mpi/c/edumpi_req_ext.h" ] || die "$file is Open MPI, but without the EduHPX instrumentation"
+[ -x "$src/configure" ] || die "$file does not contain a configure script: it is not the EvaHPX measuring MPI tarball"
+[ -f "$src/ompi/mpi/c/edumpi_req_ext.h" ] || die "$file is Open MPI, but without the EvaHPX instrumentation"
 
 # ---------------------------------------------------------------- configure, build, install
 info "prefix: $prefix   jobs: $jobs   build directory: $build_dir"
@@ -163,14 +163,14 @@ if [ "$run_test" = 1 ]; then
     fi
 fi
 
-mkdir -p "$prefix/share/eduhpx"
+mkdir -p "$prefix/share/evahpx"
 {
     echo "mpi=$MPI_NAME"
     echo "tarball_sha256=$got"
     echo "transports=$transports"
     echo "compiler=$(command -v "${CC:-cc}")"
     echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-} > "$prefix/share/eduhpx/mpi-build-info.txt"
+} > "$prefix/share/evahpx/mpi-build-info.txt"
 
 if [ "$keep_build" = 0 ] && [ "$own_build_dir" = 1 ]; then rm -rf "$build_dir"; else info "build directory kept: $build_dir"; fi
 
@@ -178,7 +178,7 @@ cat <<DONE
 
 The measuring MPI is installed in $prefix  ($MPI_NAME).
 Next: install HPX with the parcel log against it:
-    scripts/install-hpx.sh --mpi-prefix $prefix --prefix ~/eduhpx_hpx
+    scripts/install-hpx.sh --mpi-prefix $prefix --prefix ~/evahpx_hpx
 To measure a program with MPI alone (no HPX):
     export PATH=$prefix/bin:\$PATH
     export EDUHPX_MPI_LOG_DIR=<dir>         # writes <dir>/eduhpx.mpi.<rank>.bin per rank

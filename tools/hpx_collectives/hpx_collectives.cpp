@@ -1,4 +1,4 @@
-// One HPX collective, flat or hierarchical, repeated: the examples of EduHPX.
+// One HPX collective, flat or hierarchical, repeated: the examples of EvaHPX.
 //   COLL = bcast | reduce | allreduce | gather | allgather | scatter | alltoall | alltoall_large | alltoall_pairwise | scan_ex | scan_in | barrier
 //   COLL_KIND = flat | hier   COLL_ARITY (hier, default 2)   COLL_ITER (default 10)   COLL_INTS (payload ints, default 1024)
 #include <hpx/hpx_init.hpp>
@@ -132,7 +132,7 @@ int hpx_main()
     int const iterations = static_cast<int>(env_long("COLL_ITER", 10));
     int const arity = static_cast<int>(env_long("COLL_ARITY", 2));
     std::size_t const ints = static_cast<std::size_t>(env_long("COLL_INTS", 1024));
-    std::string const base = "/eduhpx/" + coll + "_" + kind + "/";
+    std::string const base = "/evahpx/" + coll + "_" + kind + "/";
     int rc;
     if (coll == "alltoall_pairwise")
     {

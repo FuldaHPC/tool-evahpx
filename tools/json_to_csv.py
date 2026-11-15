@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Converts the merged JSON of the old tool (tools/merge_hpx_run.py, EduMPI GUI) to an EduHPX run file (CSV, format 1).
+"""Converts the merged JSON of the old tool (tools/merge_hpx_run.py, EduMPI GUI) to an EvaHPX run file (CSV, format 1).
 
 usage: json_to_csv.py <merged run .json> <run .csv> [--nodes N] [--program NAME]
 
@@ -49,7 +49,7 @@ def main():
     a = ap.parse_args()
     d = json.load(open(a.json))
     with open(a.csv, "w", newline="") as f:
-        f.write("# eduhpx_run_csv 1\n")
+        f.write("# evahpx_run_csv 1\n")
         meta = ["run=%s" % d.get("run_id", ""), "localities=%d" % len(d.get("localities", [])), "grouping=%s" % d.get("grouping", "").replace(" ", "_")]
         if a.nodes:
             meta.append("nodes=%d" % a.nodes)

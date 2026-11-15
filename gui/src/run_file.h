@@ -1,5 +1,5 @@
-#ifndef EDUHPX_RUN_FILE_H
-#define EDUHPX_RUN_FILE_H
+#ifndef EVAHPX_RUN_FILE_H
+#define EVAHPX_RUN_FILE_H
 
 #include <QObject>
 #include <QString>
@@ -9,7 +9,7 @@
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
-// One run file of EduHPX (CSV, format 1, see docs/run_file_format.md): one row per HPX message with the times of the
+// One run file of EvaHPX (CSV, format 1, see docs/run_file_format.md): one row per HPX message with the times of the
 // HPX events and of the MPI send and receive. All times are microseconds since the epoch on the clock of the first node,
 // -1 or an empty field = unknown.
 //
@@ -56,4 +56,4 @@ private:
     QString m_error;
 };
 
-#endif // EDUHPX_RUN_FILE_H
+#endif // EVAHPX_RUN_FILE_H

@@ -99,13 +99,13 @@ bool RunFile::load(const QUrl &url)
             continue;
         if (line.startsWith(QLatin1Char('#'))) {
             const QString text = line.mid(1).trimmed();
-            if (text.startsWith(QLatin1String("eduhpx_run_csv"))) {
+            if (text.startsWith(QLatin1String("evahpx_run_csv")) || text.startsWith(QLatin1String("eduhpx_run_csv"))) {    // eduhpx: files written before the rename
                 bool ok = false;
                 const int version = text.mid(14).trimmed().toInt(&ok);
                 if (!ok)
                     return fail(tr("%1, line %2: the format version is missing").arg(shown).arg(lineNo)), false;
                 if (version != kFormatVersion)
-                    return fail(tr("%1: format version %2 is not supported (this EduHPX reads version %3)")
+                    return fail(tr("%1: format version %2 is not supported (this EvaHPX reads version %3)")
                                     .arg(shown).arg(version).arg(kFormatVersion)), false;
                 versionSeen = true;
             } else {
@@ -118,7 +118,7 @@ bool RunFile::load(const QUrl &url)
             continue;
         }
         if (!versionSeen)
-            return fail(tr("%1 is not an EduHPX run file (it must start with \"# eduhpx_run_csv 1\")").arg(shown)), false;
+            return fail(tr("%1 is not an EvaHPX run file (it must start with \"# evahpx_run_csv 1\")").arg(shown)), false;
         if (!splitLine(line, fields))
             return fail(tr("%1, line %2: a quote is not closed").arg(shown).arg(lineNo)), false;
 
@@ -187,7 +187,7 @@ bool RunFile::load(const QUrl &url)
     }
 
     if (!versionSeen)
-        return fail(tr("%1 is not an EduHPX run file (it must start with \"# eduhpx_run_csv 1\")").arg(shown)), false;
+        return fail(tr("%1 is not an EvaHPX run file (it must start with \"# evahpx_run_csv 1\")").arg(shown)), false;
     if (!headerSeen)
         return fail(tr("%1 has no column header").arg(shown)), false;
     if (messages.isEmpty())

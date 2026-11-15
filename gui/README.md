@@ -1,6 +1,6 @@
-# EduHPX viewer
+# EvaHPX viewer
 
-Qt 6 Quick app that opens an EduHPX run file (CSV, see [../docs/run_file_format.md](../docs/run_file_format.md)).
+Qt 6 Quick app that opens an EvaHPX run file (CSV, see [../docs/run_file_format.md](../docs/run_file_format.md)).
 No database, no network. The tree can also be shown in 3D (needs Qt Quick 3D, see below).
 
 ## Build (Qt 6.5 or newer, CMake 3.19 or newer)
@@ -13,8 +13,8 @@ the viewer builds and runs, and the *3D tree* button shows a note instead of the
 
 ## Start
 
-    build/eduhpx.app/Contents/MacOS/eduhpx run.csv     # macOS
-    build/eduhpx run.csv                               # Linux, Windows
+    build/evahpx.app/Contents/MacOS/evahpx run.csv     # macOS
+    build/evahpx run.csv                               # Linux, Windows
 
 or start it without an argument and use *Open run...*, *File > Open*, drag a file onto the window, or start with one of the built-in examples (the start screen lists them, *File > Examples...* too).
 
@@ -57,7 +57,7 @@ into waiting, HPX and MPI belongs to the lanes, and so does the colour legend be
 The same tree as in the flat view, laid out like the 3D cluster view of the EduMPI GUI: every **node** of the cluster is a pale glass
 cube (the first node bottom left, then to the right and up, two columns), and the **localities** that run on it are small
 numbered cubes inside it. The node of every locality comes from the run file (`locality_nodes` in its header, written by
-`eduhpx-merge` from the node names in the MPI logs); for an older run file the localities are assumed to be spread evenly over the nodes (the names then say *assumed*).
+`evahpx-merge` from the node names in the MPI logs); for an older run file the localities are assumed to be spread evenly over the nodes (the names then say *assumed*).
 
 **Lines.** Every message of the tree is drawn as two lines next to each other: a **green** line for the *send* (from the sender to the receiver) and a **red**
 line for the *receive* (from the receiver to the sender it heard from, as in the EduMPI GUI). Thick lines are the data, thin lines the requests. The *Send* and *Recv*
@@ -109,11 +109,11 @@ Green and red are the same colours as in the EduMPI 3D view.
 
 ## Headless preview (for tests)
 
-    QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software eduhpx ../examples/bcast_flat_16loc_4nodes.csv \
+    QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software evahpx ../examples/bcast_flat_16loc_4nodes.csv \
         --render out/ broadcast:3:locality broadcast:3:tree
 
 writes `out/broadcast3_locality.png` and `out/broadcast3_tree.png` (`kind:number:view`, view = locality | message | tree).
 
 The 3D tree (view `tree3d`) needs a real graphics window: leave out `QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software` for it. A few environment
-variables set it up for a preview: `EDUHPX_3D_MODE` (`ratio | send | recv | arrival`), `EDUHPX_3D_LINES` (`send` or `recv`: only these lines),
-`EDUHPX_3D_SELECT=<locality>` (look at a cube), `EDUHPX_CRITICAL=1` (critical path on).
+variables set it up for a preview: `EVAHPX_3D_MODE` (`ratio | send | recv | arrival`), `EVAHPX_3D_LINES` (`send` or `recv`: only these lines),
+`EVAHPX_3D_SELECT=<locality>` (look at a cube), `EVAHPX_CRITICAL=1` (critical path on).
