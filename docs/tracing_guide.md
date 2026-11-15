@@ -36,7 +36,7 @@ The measuring MPI is Open MPI 5.0.11rc1 with the EduMPI instrumentation (branch 
 $EVAHPX/scripts/install-mpi.sh --prefix $HOME/evahpx_mpi --build-dir /tmp/evahpx-mpi-build --jobs 16
 ```
 
-The script downloads `eduhpx_mpi_data-5.0.11rc1-eduhpx1.tar.gz`, checks its checksum, builds it from the unpacked archive, installs it into `--prefix`, and runs a small test (4 ranks send and receive, the files of rank 0 are read back). At the end it prints the transports that were built (`ob1` always, `ucx` if UCX was found) and what to do next.
+The script downloads `evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz`, checks its checksum, builds it from the unpacked archive, installs it into `--prefix`, and runs a small test (4 ranks send and receive, the files of rank 0 are read back). At the end it prints the transports that were built (`ob1` always, `ucx` if UCX was found) and what to do next.
 
 | option | meaning |
 |---|---|
@@ -46,7 +46,7 @@ The script downloads `eduhpx_mpi_data-5.0.11rc1-eduhpx1.tar.gz`, checks its chec
 | `--build-dir DIR` | build directory; use a local disk |
 | `--no-test`, `--keep-build` | skip the test; keep the build directory |
 
-By hand (what the script does): `tar xzf eduhpx_mpi_data-5.0.11rc1-eduhpx1.tar.gz && cd eduhpx_mpi_data-5.0.11rc1-eduhpx1 && ./configure --prefix=$HOME/evahpx_mpi --with-pmix=internal --with-hwloc=internal --with-prrte=internal && make -j 16 && make install`. More in [mpi_tarball.md](mpi_tarball.md).
+By hand (what the script does): `tar xzf evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz && cd evahpx_mpi_data-5.0.11rc1-evahpx1 && ./configure --prefix=$HOME/evahpx_mpi --with-pmix=internal --with-hwloc=internal --with-prrte=internal && make -j 16 && make install`. More in [mpi_tarball.md](mpi_tarball.md).
 
 Check: `$HOME/evahpx_mpi/bin/mpirun --version` shows Open MPI 5.0.11rc1; the file `$HOME/evahpx_mpi/share/evahpx/mpi-build-info.txt` says which tarball it was built from.
 
