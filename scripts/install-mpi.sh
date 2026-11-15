@@ -11,8 +11,8 @@
 # UCX transport. Linux; the build takes about 35 minutes with 16 cores. Not tested on macOS.
 set -euo pipefail
 
-MPI_NAME=eduhpx_mpi_data-5.0.11rc1-eduhpx1
-MPI_TARBALL_SHA256=64e1324acf5888861e042e5ad05afc351cf6ed2d5a75d667cf0322d01d5fa1d3
+MPI_NAME=evahpx_mpi_data-5.0.11rc1-evahpx1
+MPI_TARBALL_SHA256=fec90a7f336e2e3345fa78fb6aa706e33b8c1483f9f51b36618198da380fa558
 # The tarball is a file of the EvaHPX release 0.0.3 (with its .sha256). If you have it already, give it with --tarball FILE.
 MPI_URL=https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/${MPI_NAME}.tar.gz
 
