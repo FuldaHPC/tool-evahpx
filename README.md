@@ -29,17 +29,17 @@ but knows nothing about parcels. **EvaHPX puts both on one timeline**: for every
 
 ## Download
 
-Ready-made viewer (version 0.0.3), built by the workflows on the branch `deploy`:
+Ready-made viewer (version 0.0.4), built by the workflows on the branch `deploy`:
 
 | System | File |
 |---|---|
-| Linux | [`EvaHPX_0.0.3-x86_64.AppImage`](https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/EvaHPX_0.0.3-x86_64.AppImage): make it executable (`chmod +x`), then start it |
-| macOS | [`EvaHPX_0.0.3.dmg`](https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/EvaHPX_0.0.3.dmg): the app is not signed, see the note below |
-| Windows | [`EvaHPX_0.0.3-windows.zip`](https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/EvaHPX_0.0.3-windows.zip): unpack, start `evahpx.exe` |
-| Example run files | [`EvaHPX_0.0.3_examples.zip`](https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/EvaHPX_0.0.3_examples.zip), also built into the app: *File > Examples* |
-| Measuring MPI (source) | [`evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz`](https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz) and its [`.sha256`](https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz.sha256): Open MPI 5.0.11rc1 with the EduMPI hooks, to trace your own program. `scripts/install-mpi.sh` downloads and builds it for you |
+| Linux | [`EvaHPX_0.0.4-x86_64.AppImage`](https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/EvaHPX_0.0.4-x86_64.AppImage): make it executable (`chmod +x`), then start it |
+| macOS | [`EvaHPX_0.0.4.dmg`](https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/EvaHPX_0.0.4.dmg): the app is not signed, see the note below |
+| Windows | [`EvaHPX_0.0.4-windows.zip`](https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/EvaHPX_0.0.4-windows.zip): unpack, start `evahpx.exe` |
+| Example run files | [`EvaHPX_0.0.4_examples.zip`](https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/EvaHPX_0.0.4_examples.zip), also built into the app: *File > Examples* |
+| Measuring MPI (source) | [`evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz`](https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz) and its [`.sha256`](https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz.sha256): Open MPI 5.0.11rc1 with the EduMPI hooks, to trace your own program. `scripts/install-mpi.sh` downloads and builds it for you |
 
-All releases: <https://github.com/FuldaHPC/tool-eduhpx/releases>. What changed: [release notes of 0.0.3](docs/release-notes/0.0.3.md). The three viewer downloads also contain the examples.
+All releases: <https://github.com/FuldaHPC/tool-evahpx/releases>. What changed: [release notes of 0.0.4](docs/release-notes/0.0.4.md). The three viewer downloads also contain the examples.
 
 **macOS: the first start.** The app is not signed with an Apple certificate, so macOS blocks it once (it is not damaged):
 
@@ -72,7 +72,7 @@ Copy `EvaHPX.app` from the dmg to *Applications* first. This is needed only once
    4. Run: `scripts/evahpx-run --mpi ~/evahpx_mpi --hpx ~/evahpx_hpx --out my_run -- mpirun -np 16 ./app ...`, then open
       `my_run/run.csv` with EvaHPX ([details](scripts/README.md)).
 
-**Status (2026-11-08):** the viewer is released (0.0.3). The whole chain from a program to `run.csv` was tested on one
+**Status (2026-11-08):** the viewer is released (0.0.4). The whole chain from a program to `run.csv` was tested on one
 cluster (4 nodes, 16 localities, all HPX collectives, flat and hierarchical); macOS as a measuring system and runs without Slurm
 are not tested yet.
 

@@ -21,11 +21,11 @@ What you get: every HPX *parcel* (the message HPX makes of a remote call) and th
 | Compiler and tools | A C compiler and a C++17 compiler, `make`, `cmake` 3.18 or newer, `python3`, `curl` or `wget`, `tar`, `patch` or `git`. UCX development files only if you want the UCX transport of Open MPI. |
 | Internet | On the machine that builds HPX: HPX downloads Boost 1.86, asio and Tracy sources while it configures. |
 | Time and disk | The measuring MPI: about 20 to 35 minutes with 16 cores. HPX: about 30 minutes with 32 cores. Build on a **local disk** (`/tmp`): on a cluster the home directory is often a slow network file system and the build takes many times longer. |
-| The EvaHPX repository | `git clone https://github.com/FuldaHPC/tool-eduhpx.git` (the scripts and the patch are in it). Below it is called `$EVAHPX`. |
+| The EvaHPX repository | `git clone https://github.com/FuldaHPC/tool-evahpx.git` (the scripts and the patch are in it). Below it is called `$EVAHPX`. |
 
 ```
-git clone https://github.com/FuldaHPC/tool-eduhpx.git
-export EVAHPX=$PWD/tool-eduhpx
+git clone https://github.com/FuldaHPC/tool-evahpx.git
+export EVAHPX=$PWD/tool-evahpx
 ```
 
 ## 1. Install the measuring MPI
