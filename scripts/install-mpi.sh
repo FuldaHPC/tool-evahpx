@@ -13,8 +13,8 @@ set -euo pipefail
 
 MPI_NAME=evahpx_mpi_data-5.0.11rc1-evahpx1
 MPI_TARBALL_SHA256=fec90a7f336e2e3345fa78fb6aa706e33b8c1483f9f51b36618198da380fa558
-# The tarball is a file of the EvaHPX release 0.0.3 (with its .sha256). If you have it already, give it with --tarball FILE.
-MPI_URL=https://github.com/FuldaHPC/tool-eduhpx/releases/download/v0.0.3/${MPI_NAME}.tar.gz
+# The tarball is a file of the EvaHPX release 0.0.4 (with its .sha256). If you have it already, give it with --tarball FILE.
+MPI_URL=https://github.com/FuldaHPC/tool-evahpx/releases/download/v0.0.4/${MPI_NAME}.tar.gz
 
 usage() {
     cat <<USAGE
@@ -102,9 +102,9 @@ case $tarball in
         if [ ! -f "$file" ] || [ "$(sha256 "$file")" != "$sha_expected" ]; then
             info "downloading $tarball"
             if command -v curl >/dev/null 2>&1; then
-                curl -fsSL --retry 5 --retry-delay 5 -o "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EvaHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
+                curl -fsSL --retry 5 --retry-delay 5 -o "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EvaHPX release 0.0.4). If you have the tarball, use --tarball FILE"; }
             elif command -v wget >/dev/null 2>&1; then
-                wget -q --tries=5 --waitretry=5 -O "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EvaHPX release 0.0.3). If you have the tarball, use --tarball FILE"; }
+                wget -q --tries=5 --waitretry=5 -O "$file.part" "$tarball" || { rm -f "$file.part"; die "download failed (internet access? the file is part of the EvaHPX release 0.0.4). If you have the tarball, use --tarball FILE"; }
             else
                 die "neither curl nor wget found (or give the tarball as a file with --tarball FILE)"
             fi

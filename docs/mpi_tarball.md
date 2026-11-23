@@ -3,7 +3,7 @@
 The measuring MPI (Open MPI with the EduMPI instrumentation, no database) lives on the branch `eduhpx_mpi_data` of
 the EduMPI repository. Users get it as a source tarball, so they need no autotools and no Sphinx.
 
-Current file: `evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz` (58 MB, SHA-256 `fec90a7f336e2e3345fa78fb6aa706e33b8c1483f9f51b36618198da380fa558`), attached to the release 0.0.3 of EvaHPX, checked with a build from the unpacked archive and a
+Current file: `evahpx_mpi_data-5.0.11rc1-evahpx1.tar.gz` (58 MB, SHA-256 `fec90a7f336e2e3345fa78fb6aa706e33b8c1483f9f51b36618198da380fa558`), attached to the release 0.0.4 of EvaHPX, checked with a build from the unpacked archive and a
 test run with UCX and ob1 (4 ranks, `tools/eduhpx_mpi_test.c`, files read with `tools/eduhpx_dump.py`).
 
 ## Build from the tarball (user)

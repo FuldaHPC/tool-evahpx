@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
     qputenv("QML_XHR_ALLOW_FILE_READ", "1");
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("EvaHPX"));
-    QGuiApplication::setApplicationVersion(QStringLiteral("0.0.3"));
+    QGuiApplication::setApplicationVersion(QStringLiteral("0.0.4"));
     QGuiApplication::setOrganizationName(QStringLiteral("EvaHPX"));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/EvaHPX/assets/icon_256.png")));
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
